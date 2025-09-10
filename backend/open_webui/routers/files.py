@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 import asyncio
+import mimetypes
 
 from fastapi import (
     BackgroundTasks,
@@ -46,12 +47,38 @@ log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["MODELS"])
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
+RAG_PROXY_URL = os.getenv("RAG_PROXY_URL", "http://localhost:8080")   # 중앙 rag-proxy 주소
+RAG_PROXY_API_KEY = os.getenv("RAG_PROXY_API_KEY", "")               # (선택) rag-proxy에서 X-API-Key 검사할 때
 
 ############################
 # Check if the current user has access to a file through any knowledge bases the user may be in.
 ############################
 
+def _ingest_to_rag_proxy(local_path: str, filename: str, namespace: str | None = None):
+    """
+    로컬에 저장된 파일을 rag-proxy /ingest로 업로드+인덱싱
+    """
+    try:
+        mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        headers = {"X-API-Key": RAG_PROXY_API_KEY} if RAG_PROXY_API_KEY else None
+        with open(local_path, "rb") as fp:
+            data = {"overwrite": "true", "parser": "auto"}
+            if namespace:
+                data["namespace"] = namespace  # 네임스페이스 분리 운용할 때만 사용
+            resp = requests.post(
+                f"{RAG_PROXY_URL}/ingest",
+                files={"file": (filename, fp, mime)},
+                data=data,
+                headers=headers,
+                timeout=180,
+            )
+        resp.raise_for_status()
+        logger.info("RAG ingest OK: %s | %s", filename, resp.json())
+    except Exception as e:
+        # 업로드 자체는 성공 처리해야 하므로 경고만 남김
+        logger.warning("RAG ingest failed for %s: %s", filename, e)
 
 def has_access_to_file(
     file_id: Optional[str], access_type: str, user=Depends(get_verified_user)
@@ -234,6 +261,14 @@ def upload_file_handler(
             ),
         )
 
+        try:
+            local_path = Storage.get_file(file_path) if hasattr(Storage, "get_file") else file_path
+            _ingest_to_rag_proxy(local_path, name)   # name=원본 파일명으로 업로드(질문에서 'test.pdf' 매칭 쉬움)
+            # 만약 고유성(충돌 회피)을 더 중시하면 filename(uuid_접두사)로 바꾸세요:
+            # _ingest_to_rag_proxy(local_path, filename)
+        except Exception as e:
+            logger.warning("RAG ingest deferred: %s", e)
+            
         if process:
             if background_tasks and process_in_background:
                 background_tasks.add_task(
