@@ -9,7 +9,7 @@ import sys
 import time
 import random
 from uuid import uuid4
-
+from open_webui.routers import rag_proxy as rag_proxy_router
 
 from contextlib import asynccontextmanager
 from urllib.parse import urlencode, parse_qs, urlparse
@@ -1213,6 +1213,7 @@ app.mount("/ws", socket_app)
 
 app.include_router(ollama.router, prefix="/ollama", tags=["ollama"])
 app.include_router(openai.router, prefix="/openai", tags=["openai"])
+app.include_router(rag_proxy_router.router, prefix="/api/rag", tags=["rag-proxy"])
 
 
 app.include_router(pipelines.router, prefix="/api/v1/pipelines", tags=["pipelines"])

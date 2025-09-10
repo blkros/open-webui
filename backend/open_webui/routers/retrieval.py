@@ -4,6 +4,7 @@ import mimetypes
 import os
 import shutil
 import asyncio
+import requests
 
 import uuid
 from datetime import datetime
@@ -106,6 +107,8 @@ from open_webui.constants import ERROR_MESSAGES
 
 log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["RAG"])
+RAG_PROXY_URL = os.getenv("RAG_PROXY_URL", "http://host.docker.internal:8080")
+RAG_PROXY_API_KEY = os.getenv("RAG_PROXY_API_KEY", "")
 
 ##########################################
 #
@@ -1152,6 +1155,21 @@ async def update_rag_config(
 #
 ####################################
 
+def _ingest_to_rag_proxy(local_path: str, filename: str):
+    try:
+        mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        headers = {"X-API-Key": RAG_PROXY_API_KEY} if RAG_PROXY_API_KEY else None
+        with open(local_path, "rb") as fp:
+            r = requests.post(
+                f"{RAG_PROXY_URL}/ingest",
+                files={"file": (filename, fp, mime)},
+                data={"overwrite": "true", "parser": "auto"},
+                headers=headers, timeout=180
+            )
+        r.raise_for_status()
+        log.info("RAG ingest OK: %s -> %s", filename, r.json())
+    except Exception as e:
+        log.warning("RAG ingest failed for %s: %s", filename, e)
 
 def save_docs_to_vector_db(
     request: Request,
@@ -1435,6 +1453,14 @@ def process_file(
             file_path = file.path
             if file_path:
                 file_path = Storage.get_file(file_path)
+                
+                try:
+                    ext = (os.path.splitext(file.filename)[1] or "").lower()
+                    if ext in (".pdf", ".csv", ".pptx", ".xlsx", ".txt", ".md", ".docx"):
+                        _ingest_to_rag_proxy(file_path, file.filename)
+                except Exception as e:
+                    log.warning("RAG ingest failed: %s - %s", file.filename, e)
+
                 loader = Loader(
                     engine=request.app.state.config.CONTENT_EXTRACTION_ENGINE,
                     DATALAB_MARKER_API_KEY=request.app.state.config.DATALAB_MARKER_API_KEY,
