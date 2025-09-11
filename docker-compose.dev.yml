@@ -3,15 +3,19 @@ services:
     container_name: owui-local
     image: ghcr.io/open-webui/open-webui:main
     ports:
-      - "3333:8080"             # 브라우저 접속: http://localhost:3333
+      - "3333:8080"  # http://localhost:3333
     environment:
-      - RAG_PROXY_URL=http://host.docker.internal:8080   # 로컬 rag-proxy로 서버→서버 호출
+      - RAG_PROXY_URL=http://host.docker.internal:8080
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434   # ← 추가
+      # - OPENAI_API_KEYS=sk-xxxx                           # (OpenAI 쓸 거면)
     volumes:
-      # 네가 수정한 백엔드 코드를 컨테이너에 덮어씌움(읽기전용)
       - ./backend/open_webui:/app/backend/open_webui:ro
-      # OWUI 내부 데이터(파일/DB) 영속화
       - owui-data:/app/backend/data
     restart: unless-stopped
+
+    # 리눅스 데스크톱에서 로컬 개발하면 이거 풀어주면 host.docker.internal이 생김
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
 
 volumes:
   owui-data:

@@ -1,34 +1,47 @@
 services:
+  rag-proxy:
+    container_name: rag-proxy
+    build:
+      context: ./RAG
+    ports: ["8080:8080"]
+    networks: [ai-net]
+    restart: unless-stopped
+    environment:                   
+      OPENAI_BASE_URL: "http://ollama:11434/v1"
+      OPENAI_API_KEY: "dummy"    
+
   ollama:
-    volumes:
-      - ollama:/root/.ollama
+    image: ollama/ollama:latest
     container_name: ollama
     pull_policy: always
     tty: true
     restart: unless-stopped
-    image: ollama/ollama:${OLLAMA_DOCKER_TAG-latest}
+    volumes:
+      - ollama:/root/.ollama
+    networks: [ai-net]
 
   open-webui:
-    build:
-      context: .
-      args:
-        OLLAMA_BASE_URL: '/ollama'
-      dockerfile: Dockerfile
-    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-main}
+    image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
+    environment:
+      - RAG_PROXY_URL=http://rag-proxy:8080
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_SECRET_KEY=
+    depends_on:
+      - rag-proxy
+      - ollama
     volumes:
       - open-webui:/app/backend/data
-    depends_on:
-      - ollama
+      - /opt/open-webui/backend/open_webui:/app/backend/open_webui:ro   # ← 절대경로로 고정
     ports:
-      - ${OPEN_WEBUI_PORT-3000}:8080
-    environment:
-      - 'OLLAMA_BASE_URL=http://ollama:11434'
-      - 'WEBUI_SECRET_KEY='
-    extra_hosts:
-      - host.docker.internal:host-gateway
+      - "3000:8080"
+    networks: [ai-net]
     restart: unless-stopped
+
 
 volumes:
   ollama: {}
   open-webui: {}
+
+networks:
+  ai-net: {}
