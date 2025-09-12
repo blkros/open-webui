@@ -284,50 +284,26 @@ def query_collection(
     embedding_function,
     k: int,
 ) -> dict:
-    results = []
-    error = False
+    try:
+        rag = os.getenv("RAG_PROXY_URL", "") or "http://rag-proxy:8080"
+        # Open WebUI는 대개 단일 질의를 보냄. 여러 개면 첫 번째 사용.
+        q = queries[0] if isinstance(queries, list) and queries else (queries or "")
 
-    def process_query_collection(collection_name, query_embedding):
-        try:
-            if collection_name:
-                result = query_doc(
-                    collection_name=collection_name,
-                    k=k,
-                    query_embedding=query_embedding,
-                )
-                if result is not None:
-                    return result.model_dump(), None
-            return None, None
-        except Exception as e:
-            log.exception(f"Error when querying the collection: {e}")
-            return None, e
+        r = requests.post(f"{rag}/query", json={"q": q, "k": int(k)}, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        items = data.get("items", [])
 
-    # Generate all query embeddings (in one call)
-    query_embeddings = embedding_function(queries, prefix=RAG_EMBEDDING_QUERY_PREFIX)
-    log.debug(
-        f"query_collection: processing {len(queries)} queries across {len(collection_names)} collections"
-    )
+        distances = [it.get("score", 0.0) for it in items]
+        documents = [it.get("text", "") for it in items]
+        metadatas = [it.get("metadata", {}) for it in items]
 
-    with ThreadPoolExecutor() as executor:
-        future_results = []
-        for query_embedding in query_embeddings:
-            for collection_name in collection_names:
-                result = executor.submit(
-                    process_query_collection, collection_name, query_embedding
-                )
-                future_results.append(result)
-        task_results = [future.result() for future in future_results]
-
-    for result, err in task_results:
-        if err is not None:
-            error = True
-        elif result is not None:
-            results.append(result)
-
-    if error and not results:
-        log.warning("All collection queries failed. No results returned.")
-
-    return merge_and_sort_query_results(results, k=k)
+        log.info(f"rag-proxy-only: query k={k} -> {len(items)} hits")
+        return {"distances": [distances], "documents": [documents], "metadatas": [metadatas]}
+    except Exception as e:
+        log.exception(f"rag-proxy-only: query_collection failed: {e}")
+        # 실패 시 빈 결과 반환(기존 형식 유지)
+        return {"distances": [[]], "documents": [[]], "metadatas": [[]]}
 
 
 def query_collection_with_hybrid_search(
@@ -340,74 +316,13 @@ def query_collection_with_hybrid_search(
     r: float,
     hybrid_bm25_weight: float,
 ) -> dict:
-    results = []
-    error = False
-    # Fetch collection data once per collection sequentially
-    # Avoid fetching the same data multiple times later
-    collection_results = {}
-    # Only retrieve entire collection if bm_25 calculation is required
-    if hybrid_bm25_weight > 0:
-        for collection_name in collection_names:
-            try:
-                log.debug(
-                    f"query_collection_with_hybrid_search:VECTOR_DB_CLIENT.get:collection {collection_name}"
-                )
-                collection_results[collection_name] = VECTOR_DB_CLIENT.get(
-                    collection_name=collection_name
-                )
-            except Exception as e:
-                log.exception(f"Failed to fetch collection {collection_name}: {e}")
-                collection_results[collection_name] = None
-    else:
-        for collection_name in collection_names:
-            collection_results[collection_name] = []
-    log.info(
-        f"Starting hybrid search for {len(queries)} queries in {len(collection_names)} collections..."
+    # 간단하게 동일 경로로 위임(하이브리드가 rag-proxy에 있으면 거기서 처리)
+    return query_collection(
+        collection_names=collection_names,
+        queries=queries,
+        embedding_function=embedding_function,
+        k=k,
     )
-
-    def process_query(collection_name, query):
-        try:
-            result = query_doc_with_hybrid_search(
-                collection_name=collection_name,
-                collection_result=collection_results[collection_name],
-                query=query,
-                embedding_function=embedding_function,
-                k=k,
-                reranking_function=reranking_function,
-                k_reranker=k_reranker,
-                r=r,
-                hybrid_bm25_weight=hybrid_bm25_weight,
-            )
-            return result, None
-        except Exception as e:
-            log.exception(f"Error when querying the collection with hybrid_search: {e}")
-            return None, e
-
-    # Prepare tasks for all collections and queries
-    # Avoid running any tasks for collections that failed to fetch data (have assigned None)
-    tasks = [
-        (cn, q)
-        for cn in collection_names
-        if collection_results[cn] is not None
-        for q in queries
-    ]
-
-    with ThreadPoolExecutor() as executor:
-        future_results = [executor.submit(process_query, cn, q) for cn, q in tasks]
-        task_results = [future.result() for future in future_results]
-
-    for result, err in task_results:
-        if err is not None:
-            error = True
-        elif result is not None:
-            results.append(result)
-
-    if error and not results:
-        raise Exception(
-            "Hybrid search failed for all collections. Using Non-hybrid search as fallback."
-        )
-
-    return merge_and_sort_query_results(results, k=k)
 
 
 def get_embedding_function(
