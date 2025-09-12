@@ -2,15 +2,20 @@ services:
   rag-proxy:
     container_name: rag-proxy
     build:
-      context: ./RAG
+      context: /opt/rag-proxy
     ports: ["8080:8080"]
     networks: [ai-net]
     restart: unless-stopped
     environment:
       OPENAI_BASE_URL: "http://172.16.10.168:9993/v1"
       OPENAI_API_KEY: "local-anything"
+      HF_HOME: "/cache/hf"
+      TRANSFORMERS_CACHE: "/cache/hf/transformers"
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
     env_file:
-      - ./RAG/.env
+      - /opt/rag-proxy/.env
+    volumes:
+      -hf-cache:/cache/hf
 
   ollama:
     image: ollama/ollama:latest
@@ -44,6 +49,7 @@ services:
 volumes:
   ollama: {}
   open-webui: {}
+  hf-cache: {}
 
 networks:
   ai-net: {}
