@@ -3,6 +3,8 @@ import hashlib
 import json
 import logging
 from typing import Optional
+import os
+from open_webui.retrieval.utils import get_sources_from_items
 
 import aiohttp
 from aiocache import cached
@@ -872,7 +874,67 @@ async def generate_chat_completion(
     else:
         request_url = f"{url}/chat/completions"
         headers["Authorization"] = f"Bearer {key}"
+    try:
+        # 0) 안전한 기본값
+        cfg = request.app.state.config
+        top_k = getattr(cfg, "RAG_TOP_K", 5)
+        k_reranker = getattr(cfg, "RAG_RERANKER_TOP_N", top_k)
 
+        # 1) 최신 user 메시지/첨부 추출
+        messages = payload.get("messages", []) or []
+        last_user = next((m for m in reversed(messages) if m.get("role") == "user"), {})
+        prompt_text = (last_user.get("content") or "").strip()
+
+        # 첨부는 현재 요청의 최상위 files 또는 최신 user 메시지의 files에서 모두 수집
+        attached = []
+        for f in (payload.get("files") or []):
+            if isinstance(f, dict) and f.get("id"):
+                attached.append({"type": "file", "id": f["id"], "name": f.get("name"), "context": "vector"})
+        for f in (last_user.get("files") or []):
+            if isinstance(f, dict) and f.get("id"):
+                attached.append({"type": "file", "id": f["id"], "name": f.get("name"), "context": "vector"})
+
+        rag_chunks = []
+        if attached and prompt_text:
+            # 2) 첨부를 RAG 아이템으로 강제 전달 → rag-proxy를 타고 컨텍스트 획득
+            sources = get_sources_from_items(
+                request=request,
+                items=attached,
+                queries=[prompt_text],
+                # 아래 인자들은 우리 query_collection이 rag-proxy만 치므로 사실상 사용되지 않지만
+                # 시그니처 맞추기 위해 넣어둠
+                embedding_function=getattr(request.app.state, "ef", lambda *a, **k: []),
+                k=top_k,
+                reranking_function=getattr(request.app.state, "reranker", None),
+                k_reranker=k_reranker,
+                r=0.0,
+                hybrid_bm25_weight=0.0,
+                hybrid_search=False,
+                full_context=False,
+                user=user,
+            )
+
+            # 3) 텍스트 컨텍스트만 추출
+            for s in sources or []:
+                docs = s.get("document") or []
+                for d in docs:
+                    if isinstance(d, str) and d.strip():
+                        rag_chunks.append(d.strip())
+
+        # 4) 컨텍스트 있으면 마지막 user 메시지에 주입
+        if rag_chunks:
+            context = "\n\n---\n[컨텍스트]\n" + "\n\n".join(rag_chunks[:top_k])
+            # 마지막 user 메시지 content 뒤에 붙임
+            for m in reversed(messages):
+                if m.get("role") == "user":
+                    m["content"] = (m.get("content") or "") + context
+                    break
+            payload["messages"] = messages
+
+            log.info(f"rag-proxy-only: attached files -> sources {len(rag_chunks)} chunks")
+    except Exception as e:
+        log.exception(f"rag-proxy-only: RAG inject error: {e}")
+        
     payload = json.dumps(payload)
 
     r = None
