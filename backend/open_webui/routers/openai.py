@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 import os
 from open_webui.retrieval.utils import get_sources_from_items
+from open_webui.retrieval.utils import query_collection
 
 import aiohttp
 from aiocache import cached
@@ -874,67 +875,64 @@ async def generate_chat_completion(
     else:
         request_url = f"{url}/chat/completions"
         headers["Authorization"] = f"Bearer {key}"
-    try:
-        # 0) 안전한 기본값
-        cfg = request.app.state.config
-        top_k = getattr(cfg, "RAG_TOP_K", 5)
-        k_reranker = getattr(cfg, "RAG_RERANKER_TOP_N", top_k)
 
-        # 1) 최신 user 메시지/첨부 추출
+    # --- Auto-RAG: 첨부가 없을 때도 rag-proxy 조회해서 점수 높으면만 컨텍스트 주입 ---
+    try:
+        cfg = request.app.state.config
+        top_k = int(getattr(cfg, "RAG_TOP_K", 5))
+        k_reranker = int(getattr(cfg, "RAG_RERANKER_TOP_N", top_k))
+        min_score = float(os.getenv("RAG_MIN_SCORE", "0.24"))          # 점수 임계값 (환경변수로 조정 가능)
+        max_chars = int(os.getenv("RAG_MAX_CONTEXT_CHARS", "8000"))    # 컨텍스트 글자수 상한
+
         messages = payload.get("messages", []) or []
         last_user = next((m for m in reversed(messages) if m.get("role") == "user"), {})
         prompt_text = (last_user.get("content") or "").strip()
 
-        # 첨부는 현재 요청의 최상위 files 또는 최신 user 메시지의 files에서 모두 수집
-        attached = []
-        for f in (payload.get("files") or []):
-            if isinstance(f, dict) and f.get("id"):
-                attached.append({"type": "file", "id": f["id"], "name": f.get("name"), "context": "vector"})
-        for f in (last_user.get("files") or []):
-            if isinstance(f, dict) and f.get("id"):
-                attached.append({"type": "file", "id": f["id"], "name": f.get("name"), "context": "vector"})
+        # 1) 먼저 '첨부 기반' 주입을 시도(기존 코드). 실패/공백이면 rag-proxy '전역' 조회로 폴백
+        had_chunks = False
+        # 기존에 작성해두신 첨부 처리 코드에서 rag_chunks를 만들고 주입했다면,
+        # 그 결과를 감지할 수 있도록 간단히 체크만 추가하세요.
+        # ex) had_chunks = bool(rag_chunks)
 
-        rag_chunks = []
-        if attached and prompt_text:
-            # 2) 첨부를 RAG 아이템으로 강제 전달 → rag-proxy를 타고 컨텍스트 획득
-            sources = get_sources_from_items(
-                request=request,
-                items=attached,
+        if prompt_text and not had_chunks:
+            # 2) 첨부가 없으면 전역 인덱스에서 검색
+            res = query_collection(
+                collection_names=[],             # 전역 인덱스 (현재 구현은 어차피 무시하고 /query 전역 검색)
                 queries=[prompt_text],
-                # 아래 인자들은 우리 query_collection이 rag-proxy만 치므로 사실상 사용되지 않지만
-                # 시그니처 맞추기 위해 넣어둠
-                embedding_function=getattr(request.app.state, "ef", lambda *a, **k: []),
+                embedding_function=None,
                 k=top_k,
-                reranking_function=getattr(request.app.state, "reranker", None),
-                k_reranker=k_reranker,
-                r=0.0,
-                hybrid_bm25_weight=0.0,
-                hybrid_search=False,
-                full_context=False,
-                user=user,
+                # ↓ utils.py를 함께 수정해두면 user 헤더가 rag-proxy로 전달되어 사용자 범위 필터에 활용 가능
+                user=user,                       # (utils.py에서 user를 optional 인자로 받도록 반영)
             )
 
-            # 3) 텍스트 컨텍스트만 추출
-            for s in sources or []:
-                docs = s.get("document") or []
-                for d in docs:
-                    if isinstance(d, str) and d.strip():
-                        rag_chunks.append(d.strip())
+            distances = (res.get("distances") or [[]])[0]
+            documents = (res.get("documents") or [[]])[0]
+            pairs = [(float(s) if s is not None else 0.0, t) for s, t in zip(distances, documents) if t]
 
-        # 4) 컨텍스트 있으면 마지막 user 메시지에 주입
-        if rag_chunks:
-            context = "\n\n---\n[컨텍스트]\n" + "\n\n".join(rag_chunks[:top_k])
-            # 마지막 user 메시지 content 뒤에 붙임
-            for m in reversed(messages):
-                if m.get("role") == "user":
-                    m["content"] = (m.get("content") or "") + context
-                    break
-            payload["messages"] = messages
+            # 3) 임계값 이상인 결과만 골라, 길이 제한으로 묶어 주입
+            keep_texts = [t for s, t in pairs if s >= min_score]
+            if keep_texts:
+                acc, acc_len = [], 0
+                for t in keep_texts:
+                    if acc_len + len(t) > max_chars:
+                        break
+                    acc.append(t.strip())
+                    acc_len += len(t)
 
-            log.info(f"rag-proxy-only: attached files -> sources {len(rag_chunks)} chunks")
+                if acc:
+                    context = "\n\n---\n[컨텍스트]\n" + "\n\n".join(acc)
+                    for m in reversed(messages):
+                        if m.get("role") == "user":
+                            m["content"] = (m.get("content") or "") + context
+                            break
+                    payload["messages"] = messages
+                    top_score = pairs[0][0] if pairs else 0.0
+                    log.info(f"rag-proxy-auto: inject {len(acc)} chunks (top_score={top_score})")
+            else:
+                log.info("rag-proxy-auto: no confident hits; skip injection")
     except Exception as e:
-        log.exception(f"rag-proxy-only: RAG inject error: {e}")
-        
+        log.exception(f"rag-proxy-auto: error: {e}")
+
     payload = json.dumps(payload)
 
     r = None

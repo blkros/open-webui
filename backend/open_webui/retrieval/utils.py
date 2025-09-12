@@ -283,6 +283,7 @@ def query_collection(
     queries: list[str],
     embedding_function,
     k: int,
+    user: Optional[UserModel] = None,
 ) -> dict:
     try:
         rag = os.getenv("RAG_PROXY_URL", "") or "http://rag-proxy:8080"
@@ -290,6 +291,23 @@ def query_collection(
         q = queries[0] if isinstance(queries, list) and queries else (queries or "")
 
         r = requests.post(f"{rag}/query", json={"q": q, "k": int(k)}, timeout=30)
+
+        headers = {
+            "Content-Type": "application/json",
+            **(
+                {
+                    "X-OpenWebUI-User-Name": quote(user.name, safe=" "),
+                    "X-OpenWebUI-User-Id": user.id,
+                    "X-OpenWebUI-User-Email": user.email,
+                    "X-OpenWebUI-User-Role": user.role,
+                }
+                if ENABLE_FORWARD_USER_INFO_HEADERS and user
+                else {}
+            ),
+        }
+
+        r = requests.post(f"{rag}/query", json={"q": q, "k": int(k)}, headers=headers, timeout=30)
+
         r.raise_for_status()
         data = r.json()
         items = data.get("items", [])
@@ -315,6 +333,7 @@ def query_collection_with_hybrid_search(
     k_reranker: int,
     r: float,
     hybrid_bm25_weight: float,
+    user: Optional[UserModel] = None,
 ) -> dict:
     # 간단하게 동일 경로로 위임(하이브리드가 rag-proxy에 있으면 거기서 처리)
     return query_collection(
@@ -322,6 +341,7 @@ def query_collection_with_hybrid_search(
         queries=queries,
         embedding_function=embedding_function,
         k=k,
+        user=user,
     )
 
 
@@ -570,6 +590,7 @@ def get_sources_from_items(
                                 k_reranker=k_reranker,
                                 r=r,
                                 hybrid_bm25_weight=hybrid_bm25_weight,
+                                user=user
                             )
                         except Exception as e:
                             log.debug(
@@ -583,6 +604,7 @@ def get_sources_from_items(
                             queries=queries,
                             embedding_function=embedding_function,
                             k=k,
+                            user=user
                         )
             except Exception as e:
                 log.exception(e)

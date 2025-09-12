@@ -37,6 +37,7 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
       - BYPASS_EMBEDDING_AND_RETRIEVAL=false
       - WEBUI_SECRET_KEY=
+      - ENABLE_FORWARD_USER_INFO_HEADERS=true
     depends_on:
       - rag-proxy
       - ollama
