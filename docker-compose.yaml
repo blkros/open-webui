@@ -16,6 +16,8 @@ services:
       - /opt/rag-proxy/.env
     volumes:
       - hf-cache:/cache/hf
+      - /opt/rag-proxy/storage/uploads:/app/uploads
+      - /opt/rag-proxy/storage/index:/app/faiss_index
 
   ollama:
     image: ollama/ollama:latest
