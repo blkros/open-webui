@@ -8,6 +8,7 @@ from typing import Optional
 from urllib.parse import quote
 import asyncio
 import mimetypes
+import requests
 
 from fastapi import (
     BackgroundTasks,

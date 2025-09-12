@@ -1181,6 +1181,9 @@ def save_docs_to_vector_db(
     add: bool = False,
     user=None,
 ) -> bool:
+    # open webui 자체 내부 vector DB 사용 억제
+    log.info("rag-proxy-only: skip local vector DB save")
+    return True
     def _get_docs_info(docs: list[Document]) -> str:
         docs_info = set()
 

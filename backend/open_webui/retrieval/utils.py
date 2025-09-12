@@ -39,6 +39,8 @@ from open_webui.config import (
 log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["RAG"])
 
+RAG_PROXY_URL = os.getenv("RAG_PROXY_URL", "")
+logger = logging.getLogger(__name__)
 
 from typing import Any
 
