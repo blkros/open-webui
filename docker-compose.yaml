@@ -6,9 +6,11 @@ services:
     ports: ["8080:8080"]
     networks: [ai-net]
     restart: unless-stopped
-    environment:                   
-      OPENAI_BASE_URL: "http://ollama:11434/v1"
-      OPENAI_API_KEY: "dummy"    
+    environment:
+      OPENAI_BASE_URL: "http://172.16.10.168:9993/v1"
+      OPENAI_API_KEY: "local-anything"
+    env_file:
+      - ./RAG/.env
 
   ollama:
     image: ollama/ollama:latest
