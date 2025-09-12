@@ -15,7 +15,7 @@ services:
     env_file:
       - /opt/rag-proxy/.env
     volumes:
-      -hf-cache:/cache/hf
+      - hf-cache:/cache/hf
 
   ollama:
     image: ollama/ollama:latest
