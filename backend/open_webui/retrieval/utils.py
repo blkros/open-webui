@@ -308,9 +308,32 @@ def query_collection(
         if sources:                            # ← 추가: rag_source가 있으면 같이 보냄
             body["sources"] = sources          # ← 추가
 
-        # ↓ 중복 POST 제거, 헤더 포함하여 한 번만 요청 (변경)
-        r = requests.post(f"{rag}/query", json=body, headers=headers, timeout=30)
+        paths = ["/query", "/search", "/api/query", "/api/search", "/retrieve", "/qa"]  # ← 후보 경로들
+        last_err = None
+        r = None
+        for p in paths:
+            try:
+                r = requests.post(f"{rag}{p}", json=body, headers=headers, timeout=30)
+                r.raise_for_status()
+                log.info(f"rag-proxy-only: hit {p}")
+                break
+            except requests.HTTPError as ex:
+                # 404면 다음 경로로 폴백, 그 외는 바로 오류
+                if ex.response is not None and ex.response.status_code == 404:
+                    last_err = ex
+                    continue
+                raise
+            except Exception as ex:
+                # 네트워크류 오류는 즉시 실패
+                raise
 
+        if r is None:
+            # 모든 후보가 404였을 때
+            if last_err:
+                raise last_err
+            else:
+                raise Exception("RAG proxy query endpoint not found")
+            
         r.raise_for_status()
         data = r.json()
         items = data.get("items", [])
@@ -682,12 +705,7 @@ def get_sources_from_items(
                 sources.append(source)
         except Exception as e:
             log.exception(e)
-        if query_result:
-                if "data" in item:
-                    del item["data"]
-                query_results.append({**query_result, "file": item})
-                extracted_collections.extend(collection_names)  #  중복 방지 추가
-
+      
     return sources
 
 def get_model_path(model: str, update_model: bool = False):
