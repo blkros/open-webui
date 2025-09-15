@@ -284,13 +284,12 @@ def query_collection(
     embedding_function,
     k: int,
     user: Optional[UserModel] = None,
+    sources: Optional[list[str]] = None,
 ) -> dict:
     try:
         rag = os.getenv("RAG_PROXY_URL", "") or "http://rag-proxy:8080"
         # Open WebUI는 대개 단일 질의를 보냄. 여러 개면 첫 번째 사용.
         q = queries[0] if isinstance(queries, list) and queries else (queries or "")
-
-        r = requests.post(f"{rag}/query", json={"q": q, "k": int(k)}, timeout=30)
 
         headers = {
             "Content-Type": "application/json",
@@ -305,8 +304,12 @@ def query_collection(
                 else {}
             ),
         }
+        body = {"q": q, "k": int(k)}          # ← 추가: 요청 본문 변수로 분리
+        if sources:                            # ← 추가: rag_source가 있으면 같이 보냄
+            body["sources"] = sources          # ← 추가
 
-        r = requests.post(f"{rag}/query", json={"q": q, "k": int(k)}, headers=headers, timeout=30)
+        # ↓ 중복 POST 제거, 헤더 포함하여 한 번만 요청 (변경)
+        r = requests.post(f"{rag}/query", json=body, headers=headers, timeout=30)
 
         r.raise_for_status()
         data = r.json()
@@ -334,6 +337,7 @@ def query_collection_with_hybrid_search(
     r: float,
     hybrid_bm25_weight: float,
     user: Optional[UserModel] = None,
+    sources: Optional[list[str]] = None,
 ) -> dict:
     # 간단하게 동일 경로로 위임(하이브리드가 rag-proxy에 있으면 거기서 처리)
     return query_collection(
@@ -342,6 +346,7 @@ def query_collection_with_hybrid_search(
         embedding_function=embedding_function,
         k=k,
         user=user,
+        sources=sources,
     )
 
 
@@ -574,6 +579,49 @@ def get_sources_from_items(
                 log.debug(f"skipping {item} as it has already been extracted")
                 continue
 
+            # ▼▼▼▼▼ 여기부터 추가: rag_source 수집 ▼▼▼▼▼
+            rag_sources: list[str] = []
+
+            # (1) 인라인 메타에 rag_source가 실려온 경우
+            try:
+                inline_src = (
+                    item.get("file", {})
+                    .get("data", {})
+                    .get("metadata", {})
+                    .get("rag_source")
+                )
+                if inline_src:
+                    rag_sources.append(inline_src)
+            except Exception:
+                pass
+
+            # (2) 단일 파일이면, DB 메타에서 rag_source 회수
+            if item.get("type") == "file" and item.get("id"):
+                try:
+                    fo = Files.get_file_by_id(item.get("id"))
+                    rs = (fo.meta or {}).get("rag_source") if fo else None
+                    if rs:
+                        rag_sources.append(rs)
+                except Exception:
+                    pass
+
+            # (3) 컬렉션이면, 하위 파일들의 rag_source 전부 수집
+            if item.get("type") == "collection" and item.get("id"):
+                try:
+                    kb = Knowledges.get_knowledge_by_id(item.get("id"))
+                    if kb:
+                        for fid in kb.data.get("file_ids", []):
+                            fo = Files.get_file_by_id(fid)
+                            rs = (fo.meta or {}).get("rag_source") if fo else None
+                            if rs:
+                                rag_sources.append(rs)
+                except Exception:
+                    pass
+
+            # 중복 제거(순서 유지)
+            rag_sources = list(dict.fromkeys(rag_sources)) if rag_sources else None
+            # ▲▲▲▲▲ 여기까지 추가: rag_source 수집 ▲▲▲▲▲
+
             try:
                 if full_context:
                     query_result = get_all_items_from_collections(collection_names)
@@ -590,7 +638,8 @@ def get_sources_from_items(
                                 k_reranker=k_reranker,
                                 r=r,
                                 hybrid_bm25_weight=hybrid_bm25_weight,
-                                user=user
+                                user=user,
+                                sources=rag_sources,   # ← 추가: 프록시로 rag_source 전달
                             )
                         except Exception as e:
                             log.debug(
@@ -598,43 +647,48 @@ def get_sources_from_items(
                             )
 
                     # fallback to non-hybrid search
-                    if not hybrid_search and query_result is None:
+                    if (not hybrid_search) and (query_result is None):
                         query_result = query_collection(
                             collection_names=collection_names,
                             queries=queries,
                             embedding_function=embedding_function,
                             k=k,
-                            user=user
+                            user=user,
+                            sources=rag_sources,   # ← 추가: 프록시로 rag_source 전달
                         )
             except Exception as e:
                 log.exception(e)
 
-            extracted_collections.extend(collection_names)
-
-        if query_result:
-            if "data" in item:
-                del item["data"]
-            query_results.append({**query_result, "file": item})
-
+            if query_result:
+                if "data" in item:
+                    del item["data"]                  # 불필요한 원본 payload 정리
+                query_results.append({**query_result, "file": item})
     sources = []
     for query_result in query_results:
         try:
-            if "documents" in query_result:
-                if "metadatas" in query_result:
-                    source = {
-                        "source": query_result["file"],
-                        "document": query_result["documents"][0],
-                        "metadata": query_result["metadatas"][0],
-                    }
-                    if "distances" in query_result and query_result["distances"]:
-                        source["distances"] = query_result["distances"][0]
+            if "documents" in query_result and "metadatas" in query_result:
+                source = {
+                    "source": query_result["file"],
+                    "document": query_result["documents"][0],
+                    "metadata": query_result["metadatas"][0],
+                }
+                if "distances" in query_result and query_result["distances"]:
+                    source["distances"] = query_result["distances"][0]
 
-                    sources.append(source)
+                # 원본 item에 data가 남아있다면 정리
+                if "data" in source["source"]:
+                    del source["source"]["data"]
+
+                sources.append(source)
         except Exception as e:
             log.exception(e)
+        if query_result:
+                if "data" in item:
+                    del item["data"]
+                query_results.append({**query_result, "file": item})
+                extracted_collections.extend(collection_names)  #  중복 방지 추가
 
     return sources
-
 
 def get_model_path(model: str, update_model: bool = False):
     # Construct huggingface_hub kwargs with local_files_only to return the snapshot path
@@ -804,7 +858,7 @@ def generate_ollama_batch_embeddings(
                         "X-OpenWebUI-User-Email": user.email,
                         "X-OpenWebUI-User-Role": user.role,
                     }
-                    if ENABLE_FORWARD_USER_INFO_HEADERS
+                    if ENABLE_FORWARD_USER_INFO_HEADERS and user
                     else {}
                 ),
             },

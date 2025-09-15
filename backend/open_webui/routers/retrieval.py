@@ -1144,7 +1144,7 @@ async def update_rag_config(
             "EXTERNAL_WEB_LOADER_API_KEY": request.app.state.config.EXTERNAL_WEB_LOADER_API_KEY,
             "YOUTUBE_LOADER_LANGUAGE": request.app.state.config.YOUTUBE_LOADER_LANGUAGE,
             "YOUTUBE_LOADER_PROXY_URL": request.app.state.config.YOUTUBE_LOADER_PROXY_URL,
-            "YOUTUBE_LOADER_TRANSLATION": request.app.state.YOUTUBE_LOADER_TRANSLATION,
+            "YOUTUBE_LOADER_TRANSLATION": getattr(request.app.state, "YOUTUBE_LOADER_TRANSLATION", None),
         },
     }
 
@@ -1156,20 +1156,19 @@ async def update_rag_config(
 ####################################
 
 def _ingest_to_rag_proxy(local_path: str, filename: str):
-    try:
-        mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-        headers = {"X-API-Key": RAG_PROXY_API_KEY} if RAG_PROXY_API_KEY else None
-        with open(local_path, "rb") as fp:
-            r = requests.post(
-                f"{RAG_PROXY_URL}/ingest",
-                files={"file": (filename, fp, mime)},
-                data={"overwrite": "true", "parser": "auto"},
-                headers=headers, timeout=180
-            )
-        r.raise_for_status()
-        log.info("RAG ingest OK: %s -> %s", filename, r.json())
-    except Exception as e:
-        log.warning("RAG ingest failed for %s: %s", filename, e)
+    mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    headers = {"X-API-Key": RAG_PROXY_API_KEY} if RAG_PROXY_API_KEY else None
+    with open(local_path, "rb") as fp:
+        r = requests.post(
+            f"{RAG_PROXY_URL}/ingest",
+            files={"file": (filename, fp, mime)},
+            data={"overwrite": "true", "parser": "auto"},
+            headers=headers, timeout=180
+        )
+    r.raise_for_status()
+    data = r.json()
+    log.info("RAG ingest OK: %s -> %s", filename, data)
+    return data
 
 def save_docs_to_vector_db(
     request: Request,
@@ -1184,194 +1183,194 @@ def save_docs_to_vector_db(
     # open webui 자체 내부 vector DB 사용 억제
     log.info("rag-proxy-only: skip local vector DB save")
     return True
-    def _get_docs_info(docs: list[Document]) -> str:
-        docs_info = set()
+    # def _get_docs_info(docs: list[Document]) -> str:
+    #     docs_info = set()
 
-        # Trying to select relevant metadata identifying the document.
-        for doc in docs:
-            metadata = getattr(doc, "metadata", {})
-            doc_name = metadata.get("name", "")
-            if not doc_name:
-                doc_name = metadata.get("title", "")
-            if not doc_name:
-                doc_name = metadata.get("source", "")
-            if doc_name:
-                docs_info.add(doc_name)
+    #     # Trying to select relevant metadata identifying the document.
+    #     for doc in docs:
+    #         metadata = getattr(doc, "metadata", {})
+    #         doc_name = metadata.get("name", "")
+    #         if not doc_name:
+    #             doc_name = metadata.get("title", "")
+    #         if not doc_name:
+    #             doc_name = metadata.get("source", "")
+    #         if doc_name:
+    #             docs_info.add(doc_name)
 
-        return ", ".join(docs_info)
+    #     return ", ".join(docs_info)
 
-    log.info(
-        f"save_docs_to_vector_db: document {_get_docs_info(docs)} {collection_name}"
-    )
+    # log.info(
+    #     f"save_docs_to_vector_db: document {_get_docs_info(docs)} {collection_name}"
+    # )
 
-    # Check if entries with the same hash (metadata.hash) already exist
-    if metadata and "hash" in metadata:
-        result = VECTOR_DB_CLIENT.query(
-            collection_name=collection_name,
-            filter={"hash": metadata["hash"]},
-        )
+    # # Check if entries with the same hash (metadata.hash) already exist
+    # if metadata and "hash" in metadata:
+    #     result = VECTOR_DB_CLIENT.query(
+    #         collection_name=collection_name,
+    #         filter={"hash": metadata["hash"]},
+    #     )
 
-        if result is not None:
-            existing_doc_ids = result.ids[0]
-            if existing_doc_ids:
-                log.info(f"Document with hash {metadata['hash']} already exists")
-                raise ValueError(ERROR_MESSAGES.DUPLICATE_CONTENT)
+    #     if result is not None:
+    #         existing_doc_ids = result.ids[0]
+    #         if existing_doc_ids:
+    #             log.info(f"Document with hash {metadata['hash']} already exists")
+    #             raise ValueError(ERROR_MESSAGES.DUPLICATE_CONTENT)
 
-    if split:
-        if request.app.state.config.TEXT_SPLITTER in ["", "character"]:
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=request.app.state.config.CHUNK_SIZE,
-                chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
-                add_start_index=True,
-            )
-            docs = text_splitter.split_documents(docs)
-        elif request.app.state.config.TEXT_SPLITTER == "token":
-            log.info(
-                f"Using token text splitter: {request.app.state.config.TIKTOKEN_ENCODING_NAME}"
-            )
+    # if split:
+    #     if request.app.state.config.TEXT_SPLITTER in ["", "character"]:
+    #         text_splitter = RecursiveCharacterTextSplitter(
+    #             chunk_size=request.app.state.config.CHUNK_SIZE,
+    #             chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
+    #             add_start_index=True,
+    #         )
+    #         docs = text_splitter.split_documents(docs)
+    #     elif request.app.state.config.TEXT_SPLITTER == "token":
+    #         log.info(
+    #             f"Using token text splitter: {request.app.state.config.TIKTOKEN_ENCODING_NAME}"
+    #         )
 
-            tiktoken.get_encoding(str(request.app.state.config.TIKTOKEN_ENCODING_NAME))
-            text_splitter = TokenTextSplitter(
-                encoding_name=str(request.app.state.config.TIKTOKEN_ENCODING_NAME),
-                chunk_size=request.app.state.config.CHUNK_SIZE,
-                chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
-                add_start_index=True,
-            )
-            docs = text_splitter.split_documents(docs)
-        elif request.app.state.config.TEXT_SPLITTER == "markdown_header":
-            log.info("Using markdown header text splitter")
+    #         tiktoken.get_encoding(str(request.app.state.config.TIKTOKEN_ENCODING_NAME))
+    #         text_splitter = TokenTextSplitter(
+    #             encoding_name=str(request.app.state.config.TIKTOKEN_ENCODING_NAME),
+    #             chunk_size=request.app.state.config.CHUNK_SIZE,
+    #             chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
+    #             add_start_index=True,
+    #         )
+    #         docs = text_splitter.split_documents(docs)
+    #     elif request.app.state.config.TEXT_SPLITTER == "markdown_header":
+    #         log.info("Using markdown header text splitter")
 
-            # Define headers to split on - covering most common markdown header levels
-            headers_to_split_on = [
-                ("#", "Header 1"),
-                ("##", "Header 2"),
-                ("###", "Header 3"),
-                ("####", "Header 4"),
-                ("#####", "Header 5"),
-                ("######", "Header 6"),
-            ]
+    #         # Define headers to split on - covering most common markdown header levels
+    #         headers_to_split_on = [
+    #             ("#", "Header 1"),
+    #             ("##", "Header 2"),
+    #             ("###", "Header 3"),
+    #             ("####", "Header 4"),
+    #             ("#####", "Header 5"),
+    #             ("######", "Header 6"),
+    #         ]
 
-            markdown_splitter = MarkdownHeaderTextSplitter(
-                headers_to_split_on=headers_to_split_on,
-                strip_headers=False,  # Keep headers in content for context
-            )
+    #         markdown_splitter = MarkdownHeaderTextSplitter(
+    #             headers_to_split_on=headers_to_split_on,
+    #             strip_headers=False,  # Keep headers in content for context
+    #         )
 
-            md_split_docs = []
-            for doc in docs:
-                md_header_splits = markdown_splitter.split_text(doc.page_content)
-                text_splitter = RecursiveCharacterTextSplitter(
-                    chunk_size=request.app.state.config.CHUNK_SIZE,
-                    chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
-                    add_start_index=True,
-                )
-                md_header_splits = text_splitter.split_documents(md_header_splits)
+    #         md_split_docs = []
+    #         for doc in docs:
+    #             md_header_splits = markdown_splitter.split_text(doc.page_content)
+    #             text_splitter = RecursiveCharacterTextSplitter(
+    #                 chunk_size=request.app.state.config.CHUNK_SIZE,
+    #                 chunk_overlap=request.app.state.config.CHUNK_OVERLAP,
+    #                 add_start_index=True,
+    #             )
+    #             md_header_splits = text_splitter.split_documents(md_header_splits)
 
-                # Convert back to Document objects, preserving original metadata
-                for split_chunk in md_header_splits:
-                    headings_list = []
-                    # Extract header values in order based on headers_to_split_on
-                    for _, header_meta_key_name in headers_to_split_on:
-                        if header_meta_key_name in split_chunk.metadata:
-                            headings_list.append(
-                                split_chunk.metadata[header_meta_key_name]
-                            )
+    #             # Convert back to Document objects, preserving original metadata
+    #             for split_chunk in md_header_splits:
+    #                 headings_list = []
+    #                 # Extract header values in order based on headers_to_split_on
+    #                 for _, header_meta_key_name in headers_to_split_on:
+    #                     if header_meta_key_name in split_chunk.metadata:
+    #                         headings_list.append(
+    #                             split_chunk.metadata[header_meta_key_name]
+    #                         )
 
-                    md_split_docs.append(
-                        Document(
-                            page_content=split_chunk.page_content,
-                            metadata={**doc.metadata, "headings": headings_list},
-                        )
-                    )
+    #                 md_split_docs.append(
+    #                     Document(
+    #                         page_content=split_chunk.page_content,
+    #                         metadata={**doc.metadata, "headings": headings_list},
+    #                     )
+    #                 )
 
-            docs = md_split_docs
-        else:
-            raise ValueError(ERROR_MESSAGES.DEFAULT("Invalid text splitter"))
+    #         docs = md_split_docs
+    #     else:
+    #         raise ValueError(ERROR_MESSAGES.DEFAULT("Invalid text splitter"))
 
-    if len(docs) == 0:
-        raise ValueError(ERROR_MESSAGES.EMPTY_CONTENT)
+    # if len(docs) == 0:
+    #     raise ValueError(ERROR_MESSAGES.EMPTY_CONTENT)
 
-    texts = [doc.page_content for doc in docs]
-    metadatas = [
-        {
-            **doc.metadata,
-            **(metadata if metadata else {}),
-            "embedding_config": {
-                "engine": request.app.state.config.RAG_EMBEDDING_ENGINE,
-                "model": request.app.state.config.RAG_EMBEDDING_MODEL,
-            },
-        }
-        for doc in docs
-    ]
+    # texts = [doc.page_content for doc in docs]
+    # metadatas = [
+    #     {
+    #         **doc.metadata,
+    #         **(metadata if metadata else {}),
+    #         "embedding_config": {
+    #             "engine": request.app.state.config.RAG_EMBEDDING_ENGINE,
+    #             "model": request.app.state.config.RAG_EMBEDDING_MODEL,
+    #         },
+    #     }
+    #     for doc in docs
+    # ]
 
-    try:
-        if VECTOR_DB_CLIENT.has_collection(collection_name=collection_name):
-            log.info(f"collection {collection_name} already exists")
+    # try:
+    #     if VECTOR_DB_CLIENT.has_collection(collection_name=collection_name):
+    #         log.info(f"collection {collection_name} already exists")
 
-            if overwrite:
-                VECTOR_DB_CLIENT.delete_collection(collection_name=collection_name)
-                log.info(f"deleting existing collection {collection_name}")
-            elif add is False:
-                log.info(
-                    f"collection {collection_name} already exists, overwrite is False and add is False"
-                )
-                return True
+    #         if overwrite:
+    #             VECTOR_DB_CLIENT.delete_collection(collection_name=collection_name)
+    #             log.info(f"deleting existing collection {collection_name}")
+    #         elif add is False:
+    #             log.info(
+    #                 f"collection {collection_name} already exists, overwrite is False and add is False"
+    #             )
+    #             return True
 
-        log.info(f"adding to collection {collection_name}")
-        embedding_function = get_embedding_function(
-            request.app.state.config.RAG_EMBEDDING_ENGINE,
-            request.app.state.config.RAG_EMBEDDING_MODEL,
-            request.app.state.ef,
-            (
-                request.app.state.config.RAG_OPENAI_API_BASE_URL
-                if request.app.state.config.RAG_EMBEDDING_ENGINE == "openai"
-                else (
-                    request.app.state.config.RAG_OLLAMA_BASE_URL
-                    if request.app.state.config.RAG_EMBEDDING_ENGINE == "ollama"
-                    else request.app.state.config.RAG_AZURE_OPENAI_BASE_URL
-                )
-            ),
-            (
-                request.app.state.config.RAG_OPENAI_API_KEY
-                if request.app.state.config.RAG_EMBEDDING_ENGINE == "openai"
-                else (
-                    request.app.state.config.RAG_OLLAMA_API_KEY
-                    if request.app.state.config.RAG_EMBEDDING_ENGINE == "ollama"
-                    else request.app.state.config.RAG_AZURE_OPENAI_API_KEY
-                )
-            ),
-            request.app.state.config.RAG_EMBEDDING_BATCH_SIZE,
-            azure_api_version=(
-                request.app.state.config.RAG_AZURE_OPENAI_API_VERSION
-                if request.app.state.config.RAG_EMBEDDING_ENGINE == "azure_openai"
-                else None
-            ),
-        )
+    #     log.info(f"adding to collection {collection_name}")
+    #     embedding_function = get_embedding_function(
+    #         request.app.state.config.RAG_EMBEDDING_ENGINE,
+    #         request.app.state.config.RAG_EMBEDDING_MODEL,
+    #         request.app.state.ef,
+    #         (
+    #             request.app.state.config.RAG_OPENAI_API_BASE_URL
+    #             if request.app.state.config.RAG_EMBEDDING_ENGINE == "openai"
+    #             else (
+    #                 request.app.state.config.RAG_OLLAMA_BASE_URL
+    #                 if request.app.state.config.RAG_EMBEDDING_ENGINE == "ollama"
+    #                 else request.app.state.config.RAG_AZURE_OPENAI_BASE_URL
+    #             )
+    #         ),
+    #         (
+    #             request.app.state.config.RAG_OPENAI_API_KEY
+    #             if request.app.state.config.RAG_EMBEDDING_ENGINE == "openai"
+    #             else (
+    #                 request.app.state.config.RAG_OLLAMA_API_KEY
+    #                 if request.app.state.config.RAG_EMBEDDING_ENGINE == "ollama"
+    #                 else request.app.state.config.RAG_AZURE_OPENAI_API_KEY
+    #             )
+    #         ),
+    #         request.app.state.config.RAG_EMBEDDING_BATCH_SIZE,
+    #         azure_api_version=(
+    #             request.app.state.config.RAG_AZURE_OPENAI_API_VERSION
+    #             if request.app.state.config.RAG_EMBEDDING_ENGINE == "azure_openai"
+    #             else None
+    #         ),
+    #     )
 
-        embeddings = embedding_function(
-            list(map(lambda x: x.replace("\n", " "), texts)),
-            prefix=RAG_EMBEDDING_CONTENT_PREFIX,
-            user=user,
-        )
+    #     embeddings = embedding_function(
+    #         list(map(lambda x: x.replace("\n", " "), texts)),
+    #         prefix=RAG_EMBEDDING_CONTENT_PREFIX,
+    #         user=user,
+    #     )
 
-        items = [
-            {
-                "id": str(uuid.uuid4()),
-                "text": text,
-                "vector": embeddings[idx],
-                "metadata": metadatas[idx],
-            }
-            for idx, text in enumerate(texts)
-        ]
+    #     items = [
+    #         {
+    #             "id": str(uuid.uuid4()),
+    #             "text": text,
+    #             "vector": embeddings[idx],
+    #             "metadata": metadatas[idx],
+    #         }
+    #         for idx, text in enumerate(texts)
+    #     ]
 
-        VECTOR_DB_CLIENT.insert(
-            collection_name=collection_name,
-            items=items,
-        )
+    #     VECTOR_DB_CLIENT.insert(
+    #         collection_name=collection_name,
+    #         items=items,
+    #     )
 
-        return True
-    except Exception as e:
-        log.exception(e)
-        raise e
+    #     return True
+    # except Exception as e:
+    #     log.exception(e)
+    #     raise e
 
 
 class ProcessFileForm(BaseModel):
@@ -1451,19 +1450,30 @@ def process_file(
 
             text_content = file.data.get("content", "")
         else:
-            # Process the file and save the content
-            # Usage: /files/
+            # Process the file and save the content (Usage: /files/)
             file_path = file.path
             if file_path:
                 file_path = Storage.get_file(file_path)
-                
+
+                # 1) RAG 프록시 인제스트 & saved_path 추출
+                saved_path = None
                 try:
                     ext = (os.path.splitext(file.filename)[1] or "").lower()
                     if ext in (".pdf", ".csv", ".pptx", ".xlsx", ".txt", ".md", ".docx"):
-                        _ingest_to_rag_proxy(file_path, file.filename)
+                        resp = _ingest_to_rag_proxy(file_path, file.filename)
+                        if isinstance(resp, dict):
+                            saved_path = ((resp.get("saved") or {}).get("path")) or resp.get("path")
                 except Exception as e:
                     log.warning("RAG ingest failed: %s - %s", file.filename, e)
 
+                # 2) 파일 메타에 rag_source 저장 (성공 시)
+                if saved_path:
+                    try:
+                        Files.update_file_metadata_by_id(file.id, {"rag_source": saved_path})
+                    except Exception as e:
+                        log.debug(f"store rag_source meta failed: {e}")
+
+                # 3) 컨텐츠 로딩 (loader는 여기서 한 번만 생성/사용)
                 loader = Loader(
                     engine=request.app.state.config.CONTENT_EXTRACTION_ENGINE,
                     DATALAB_MARKER_API_KEY=request.app.state.config.DATALAB_MARKER_API_KEY,
@@ -1494,22 +1504,22 @@ def process_file(
                     DOCUMENT_INTELLIGENCE_KEY=request.app.state.config.DOCUMENT_INTELLIGENCE_KEY,
                     MISTRAL_OCR_API_KEY=request.app.state.config.MISTRAL_OCR_API_KEY,
                 )
-                docs = loader.load(
-                    file.filename, file.meta.get("content_type"), file_path
-                )
+                loaded_docs = loader.load(file.filename, file.meta.get("content_type"), file_path)
 
+                # 4) docs 최종 생성 (rag_source를 각 청크 메타에 주입)
                 docs = [
                     Document(
-                        page_content=doc.page_content,
+                        page_content=d.page_content,
                         metadata={
-                            **doc.metadata,
+                            **d.metadata,
                             "name": file.filename,
                             "created_by": file.user_id,
                             "file_id": file.id,
                             "source": file.filename,
+                            **({"rag_source": saved_path} if saved_path else {}),
                         },
                     )
-                    for doc in docs
+                    for d in loaded_docs
                 ]
             else:
                 docs = [
@@ -1524,7 +1534,9 @@ def process_file(
                         },
                     )
                 ]
-            text_content = " ".join([doc.page_content for doc in docs])
+
+            text_content = " ".join(doc.page_content for doc in docs)
+
 
         log.debug(f"text_content: {text_content}")
         Files.update_file_data_by_id(
@@ -2095,6 +2107,7 @@ class QueryDocForm(BaseModel):
     k_reranker: Optional[int] = None
     r: Optional[float] = None
     hybrid: Optional[bool] = None
+    hybrid_bm25_weight: Optional[float] = None  # ← 추가
 
 
 @router.post("/query/doc")

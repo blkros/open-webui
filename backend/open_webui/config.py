@@ -2302,7 +2302,7 @@ MISTRAL_OCR_API_KEY = PersistentConfig(
 BYPASS_EMBEDDING_AND_RETRIEVAL = PersistentConfig(
     "BYPASS_EMBEDDING_AND_RETRIEVAL",
     "rag.bypass_embedding_and_retrieval",
-    os.environ.get("BYPASS_EMBEDDING_AND_RETRIEVAL", "False").lower() == "true",
+    os.environ.get("BYPASS_EMBEDDING_AND_RETRIEVAL", "True").lower() == "true",
 )
 
 
@@ -2328,7 +2328,7 @@ RAG_HYBRID_BM25_WEIGHT = PersistentConfig(
 ENABLE_RAG_HYBRID_SEARCH = PersistentConfig(
     "ENABLE_RAG_HYBRID_SEARCH",
     "rag.enable_hybrid_search",
-    os.environ.get("ENABLE_RAG_HYBRID_SEARCH", "").lower() == "true",
+    os.environ.get("ENABLE_RAG_HYBRID_SEARCH", "False").lower() == "true",
 )
 
 RAG_FULL_CONTEXT = PersistentConfig(
@@ -2606,7 +2606,7 @@ WEB_SEARCH_ENGINE = PersistentConfig(
 BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL = PersistentConfig(
     "BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL",
     "rag.web.search.bypass_embedding_and_retrieval",
-    os.getenv("BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL", "False").lower() == "true",
+    os.getenv("BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL", "True").lower() == "true",
 )
 
 
