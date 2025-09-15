@@ -304,9 +304,9 @@ def query_collection(
                 else {}
             ),
         }
-        body = {"q": q, "k": int(k)}          # ← 추가: 요청 본문 변수로 분리
-        if sources:                            # ← 추가: rag_source가 있으면 같이 보냄
-            body["sources"] = sources          # ← 추가
+        body = {"q": q, "k": int(k)}
+        if sources:
+            body["sources"] = sources
 
         paths = ["/query", "/search", "/api/query", "/api/search", "/retrieve", "/qa"]  # ← 후보 경로들
         last_err = None
