@@ -3,6 +3,7 @@ services:
     container_name: rag-proxy
     build:
       context: /opt/rag-proxy
+      network: host
     ports: ["8080:8080"]
     networks: [ai-net]
     restart: unless-stopped
