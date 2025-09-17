@@ -5,7 +5,7 @@ services:
       context: /opt/rag-proxy
       network: host
     ports: ["8080:8080"]
-    networks: [ai-net]
+    networks: [opt_ai-net]
     restart: unless-stopped
     environment:
       OPENAI_BASE_URL: "http://172.16.10.168:9993/v1"
@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
     volumes:
       - ollama:/root/.ollama
-    networks: [ai-net]
+    networks: [opt_ai-net]
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -47,7 +47,7 @@ services:
       - /opt/open-webui/backend/open_webui:/app/backend/open_webui:ro   # ← 절대경로로 고정
     ports:
       - "3000:8080"
-    networks: [ai-net]
+    networks: [opt_ai-net]
     restart: unless-stopped
   
   mcp-atlassian:
@@ -57,7 +57,7 @@ services:
     env_file:
       - /opt/mcp-atlassian/.env
     command: ["--transport","streamable-http","--port","9000","-vv"]
-    networks: [ai-net]
+    networks: [opt_ai-net]
     # 외부 테스트 끝나면 ports 지워도 됨. 잠깐 테스트 필요하면 아래 주석 해제
     # ports: ["127.0.0.1:9000:9000"]
 
@@ -67,5 +67,6 @@ volumes:
   hf-cache: {}
 
 networks:
-  ai-net: {}
-
+  opt_ai-net:
+    external: true
+    name: opt_ai-net
