@@ -49,15 +49,6 @@ services:
       - "3000:8080"
     networks: [ai-net]
     restart: unless-stopped
-
-
-volumes:
-  ollama: {}
-  open-webui: {}
-  hf-cache: {}
-
-networks:
-  ai-net: {}
   
   mcp-atlassian:
     image: ghcr.io/sooperset/mcp-atlassian:latest
@@ -69,3 +60,12 @@ networks:
     networks: [ai-net]
     # 외부 테스트 끝나면 ports 지워도 됨. 잠깐 테스트 필요하면 아래 주석 해제
     # ports: ["127.0.0.1:9000:9000"]
+
+volumes:
+  ollama: {}
+  open-webui: {}
+  hf-cache: {}
+
+networks:
+  ai-net: {}
+
