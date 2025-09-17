@@ -6,6 +6,7 @@ from typing import Optional
 import os
 from open_webui.retrieval.utils import get_sources_from_items
 from open_webui.retrieval.utils import query_collection
+import re
 
 import aiohttp
 from aiocache import cached
@@ -932,6 +933,63 @@ async def generate_chat_completion(
                 log.info("rag-proxy-auto: no confident hits; skip injection")
     except Exception as e:
         log.exception(f"rag-proxy-auto: error: {e}")
+        
+    # === [ADD] 조건부 프롬프트 가드: 사실 질의 vs 창의 질의 ===
+    try:
+        messages = payload.get("messages", []) or []
+        last_user = next((m for m in reversed(messages) if m.get("role") == "user"), {})
+        user_text = (last_user.get("content") or "")
+
+        # 간단 휴리스틱: 조문/근거/원문/페이지 → '사실 모드'
+        fact_pat = r"(제\s*\d{1,3}\s*조|조문|근거|원문|페이지|출처)"
+        is_fact_mode = bool(re.search(fact_pat, user_text))
+
+        # 아이디어/브레인스토밍/작문 → '창의 모드'
+        creative_keywords = ("아이디어", "브레인스토밍", "이름짓기", "카피", "슬로건", "비유", "창의", "스타일")
+        is_creative_mode = any(k in user_text for k in creative_keywords)
+
+        # (선택) rag-proxy의 notes 활용 시:
+        # notes = (res or {}).get("notes", {}) if 'res' in locals() else {}
+        # missing_article = notes.get("missing_article")
+        # article_no = notes.get("article_no")
+
+        # o-series/추론형 모델은 system 대신 developer 역할
+        guard_role = "developer" if is_openai_reasoning_model(payload.get("model", "")) else "system"
+
+        if is_fact_mode:
+            guard_lines = [
+                "다음 문서 컨텍스트에 근거해서만 한국어로 답하라.",
+                "컨텍스트에 없는 내용은 추론/상상/보완하지 말고, 다음 문장을 출력하라: 주어진 정보에서 질문에 대한 정보를 찾을 수 없습니다",
+                "가능하면 근거 문장(요약)과 조문/페이지 메타를 함께 제시하라.",
+            ]
+            messages.insert(0, {"role": guard_role, "content": "\n".join(guard_lines)})
+            # 사실 모드: 보수적 샘플링
+            try:
+                payload["temperature"] = min(float(payload.get("temperature", 0.7)), 0.2)
+            except Exception:
+                payload["temperature"] = 0.2
+            log.info("guard-mode: fact")
+
+        elif is_creative_mode:
+            messages.insert(0, {
+                "role": guard_role,
+                "content": (
+                    "너는 창의적 보조자다. 아이디어를 다양하고 구체적으로 제시하라. "
+                    "문서 컨텍스트가 주어졌다면 참고는 하되, 컨텍스트에 묶이지 말고 새로운 제안을 하라. "
+                    "사실 단정이 아니라 아이디어일 때는 명확히 아이디어임을 표기하라."
+                )
+            })
+            # 창의 모드: 적극적 샘플링
+            try:
+                payload["temperature"] = max(float(payload.get("temperature", 0.7)), 0.9)
+            except Exception:
+                payload["temperature"] = 0.9
+            log.info("guard-mode: creative")
+
+        # 메시지 반영
+        payload["messages"] = messages
+    except Exception as e:
+        log.exception(f"conditional-guard: {e}")
 
     payload = json.dumps(payload)
 
