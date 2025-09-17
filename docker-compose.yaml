@@ -23,7 +23,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
-    pull_policy: always
+    pull_policy: never
     tty: true
     restart: unless-stopped
     volumes:
