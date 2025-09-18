@@ -13,7 +13,7 @@ services:
       HF_HOME: "/cache/hf"
       TRANSFORMERS_CACHE: "/cache/hf/transformers"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
-      MCP_CONFLUENCE_URL: "http://mcp-atlassian:9000/mcp"   # (같은 네트워크면 내부 DNS 사용)
+      MCP_CONFLUENCE_URL: "http://mcp-confluence:9000/mcp"
 
     env_file:
       - /opt/rag-proxy/.env
