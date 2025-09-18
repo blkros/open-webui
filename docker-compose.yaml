@@ -13,7 +13,7 @@ services:
       HF_HOME: "/cache/hf"
       TRANSFORMERS_CACHE: "/cache/hf/transformers"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
-      MCP_CONFLUENCE_URL: "http://mcp-confluence:9000/mcp"
+      MCP_CONFLUENCE_URL: "http://mcp-atlassian:9000/mcp"
 
     env_file:
       - /opt/rag-proxy/.env
@@ -58,7 +58,7 @@ services:
     restart: unless-stopped
     env_file:
       - /opt/mcp-atlassian/.env
-    command: ["--transport","sse","--port","9000","-vv"]
+    command: ["--transport","streamable-http","--port","9000","-vv"]
     networks: [opt_ai-net]
     # 외부 테스트 끝나면 ports 지워도 됨. 잠깐 테스트 필요하면 아래 주석 해제
     # ports: ["127.0.0.1:9000:9000"]
