@@ -13,6 +13,8 @@ services:
       HF_HOME: "/cache/hf"
       TRANSFORMERS_CACHE: "/cache/hf/transformers"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
+      MCP_CONFLUENCE_URL: "http://mcp-confluence:9000/mcp"   # (같은 네트워크면 내부 DNS 사용)
+
     env_file:
       - /opt/rag-proxy/.env
     volumes:
@@ -60,6 +62,7 @@ services:
     networks: [opt_ai-net]
     # 외부 테스트 끝나면 ports 지워도 됨. 잠깐 테스트 필요하면 아래 주석 해제
     # ports: ["127.0.0.1:9000:9000"]
+
 
 volumes:
   ollama: {}
