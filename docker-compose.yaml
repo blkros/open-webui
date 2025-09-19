@@ -60,6 +60,8 @@ services:
       - /opt/mcp-confluence/.env
     networks: [opt_ai-net]
     restart: unless-stopped
+    environment:
+      - TRANSPORT=sse
     # 디버깅 외에는 굳이 열 필요 없음(내부 통신이면 불필요)
     # ports:
     #   - "9000:9000"
