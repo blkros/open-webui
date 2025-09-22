@@ -60,14 +60,28 @@ services:
     container_name: mcp-confluence
     env_file:
       - /opt/mcp-confluence/.env
-    networks: [opt_ai-net]
-    restart: unless-stopped
     environment:
       - TRANSPORT=sse
-    # 디버깅 외에는 굳이 열 필요 없음(내부 통신이면 불필요)
+      - HOST=0.0.0.0
+      - PORT=9000
+      # bridge_mcp가 내부에서 쓸 값
+      - RAG_PROXY=http://rag-proxy:8080
+      - MCP_BASE=http://127.0.0.1:9001
+      - TOP_K=5
+      - THRESH=0.83
+    networks: [opt_ai-net]
+    restart: unless-stopped
+    # (필요시 외부 접근용) 포트 열고 싶으면 아래 주석 해제
     # ports:
     #   - "9000:9000"
-
+    #   - "9001:9001"
+    #   - "9012:9012"
+    command: >
+      sh -lc "
+      uvicorn app.http_wrapper:api --host 0.0.0.0 --port 9001 &
+      uvicorn app.bridge_mcp:app --host 0.0.0.0 --port 9012 &
+      python -m app.main
+      "
 
 volumes:
   ollama: {}
