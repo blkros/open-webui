@@ -14,8 +14,6 @@ services:
       TRANSFORMERS_CACHE: "/cache/hf/transformers"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
       MCP_CONFLUENCE_URL: "http://mcp-confluence:9000/sse"
-      MCP_URL: "http://mcp-confluence:9000/mcp"
-      CONFLUENCE_TOOL_SEARCH: "search_pages"
 
     env_file:
       - /opt/rag-proxy/.env
@@ -63,7 +61,7 @@ services:
     networks: [opt_ai-net]
     restart: unless-stopped
     environment:
-      - TRANSPORT=http
+      - TRANSPORT=sse
     # 디버깅 외에는 굳이 열 필요 없음(내부 통신이면 불필요)
     # ports:
     #   - "9000:9000"
