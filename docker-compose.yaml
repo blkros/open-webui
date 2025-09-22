@@ -13,6 +13,7 @@ services:
       HF_HOME: "/cache/hf"
       TRANSFORMERS_CACHE: "/cache/hf/transformers"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
+      MCP_URL: "http://mcp-confluence:9000/sse"
       MCP_CONFLUENCE_URL: "http://mcp-confluence:9000/sse"
       CONFLUENCE_MCP_TOOL: "search_pages"
 
