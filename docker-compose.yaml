@@ -8,12 +8,21 @@ services:
     networks: [opt_ai-net]
     restart: unless-stopped
     environment:
+      MCP_URL: http://mcp-confluence:9000/mcp
+      MCP_PROTOCOL_VERSION: "2025-06-18"
+      DISABLE_INTERNAL_MCP: "0"
+      INDEX_DIR: faiss_index
+      UPLOAD_DIR: uploads
+      HF_HOME: /cache/hf
+      TRANSFORMERS_CACHE: /cache/hf/transformers
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
       OPENAI_BASE_URL: "http://172.16.10.168:9993/v1"
       OPENAI_API_KEY: "local-anything"
-      HF_HOME: "/cache/hf"
-      TRANSFORMERS_CACHE: "/cache/hf/transformers"
-      HF_HUB_ENABLE_HF_TRANSFER: "1"
-      # DISABLE_INTERNAL_MCP: "1" 
+      EMBEDDING_MODEL: intfloat/multilingual-e5-large-instruct
+      EMBEDDING_DEVICE: cpu
+      ENABLE_RERANKER: "true"
+      RERANKER_MODEL: BAAI/bge-reranker-base
+      RERANKER_TOP_N: "5"
     env_file:
       - /opt/rag-proxy/.env
     volumes:
