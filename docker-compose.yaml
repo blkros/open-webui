@@ -88,7 +88,7 @@ services:
       sh -lc "
       uvicorn app.http_wrapper:api --host 0.0.0.0 --port 9001 &
       uvicorn app.bridge_mcp:app --host 0.0.0.0 --port 9012 &
-      uvicorn app.main:app --host 0.0.0.0 --port 9000
+      python -m app.main
       "
 
 volumes:
