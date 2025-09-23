@@ -16,7 +16,7 @@ services:
       # MCP_URL: "http://mcp-confluence:9000/sse"
       # MCP_CONFLUENCE_URL: "http://mcp-confluence:9000/sse"
       # CONFLUENCE_MCP_TOOL: "search_pages"
-
+      DISABLE_INTERNAL_MCP: "1" 
     env_file:
       - /opt/rag-proxy/.env
     volumes:
