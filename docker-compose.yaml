@@ -13,7 +13,7 @@ services:
       HF_HOME: "/cache/hf"
       TRANSFORMERS_CACHE: "/cache/hf/transformers"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
-      DISABLE_INTERNAL_MCP: "1" 
+      # DISABLE_INTERNAL_MCP: "1" 
     env_file:
       - /opt/rag-proxy/.env
     volumes:
