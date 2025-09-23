@@ -70,9 +70,9 @@ services:
       - TOP_K=5
       - THRESH=0.83
       - CONFLUENCE_BASE_URL=https://confluence.nuriflex.co.kr
-      - CONFLUENCE_USER=새아이디
-      - CONFLUENCE_PASSWORD='새비밀번호!특수문자OK'
-      - VERIFY_SSL=true
+      # - CONFLUENCE_USER=새아이디
+      # - CONFLUENCE_PASSWORD='새비밀번호!특수문자OK'
+      # - VERIFY_SSL=true
     networks: [opt_ai-net]
     restart: unless-stopped
     # (필요시 외부 접근용) 포트 열고 싶으면 아래 주석 해제
