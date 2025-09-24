@@ -8,7 +8,7 @@ services:
     networks: [opt_ai-net]
     restart: unless-stopped
     environment:
-      MCP_URL: "http://mcp-confluence:9000/sse?version=2025-06-18"
+      MCP_URL: "http://mcp-confluence:8000/sse?version=2025-06-18"
       MCP_PROTOCOL_VERSION: "2025-06-18"
       DISABLE_INTERNAL_MCP: "0"
       INDEX_DIR: faiss_index
