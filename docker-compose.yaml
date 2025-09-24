@@ -76,6 +76,7 @@ services:
       - TOP_K=5
       - THRESH=0.83
       # - CONFLUENCE_BASE_URL=https://confluence.nuriflex.co.kr
+      - FASTMCP_PORT=9000    # FastMCP가 이 포트로 SSE를 띄우도록 강제
 
     networks: [opt_ai-net]
     restart: unless-stopped
