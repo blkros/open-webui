@@ -54,7 +54,7 @@ services:
       - ollama
     volumes:
       - open-webui:/app/backend/data
-      - /opt/open-webui/backend/open_webui:/app/backend/open_webui:ro   # ← 절대경로로 고정
+      - /opt/open-webui/backend/open_webui:/app/backend/open_webui
     ports:
       - "3000:8080"
     networks: [opt_ai-net]
