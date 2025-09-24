@@ -8,7 +8,7 @@ services:
     networks: [opt_ai-net]
     restart: unless-stopped
     environment:
-      MCP_URL: "http://mcp-confluence:9012/sse?version=2025-06-18"
+      MCP_URL: "http://mcp-confluence:9000/sse?version=2025-06-18"
       MCP_PROTOCOL_VERSION: "2025-06-18"
       DISABLE_INTERNAL_MCP: "0"
       INDEX_DIR: faiss_index
@@ -75,7 +75,7 @@ services:
       - MCP_BASE=http://127.0.0.1:9001
       - TOP_K=5
       - THRESH=0.83
-      # - CONFLUENCE_BASE_URL=https://confluence.nuriflex.co.kr
+      - CONF_DEFAULT_SPACE=ENG
       - FASTMCP_PORT=9000    # FastMCP가 이 포트로 SSE를 띄우도록 강제
 
     networks: [opt_ai-net]
