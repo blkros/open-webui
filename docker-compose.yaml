@@ -77,7 +77,7 @@ services:
       - THRESH=0.83
       - CONF_DEFAULT_SPACE=ENG
       - FASTMCP_PORT=9000    # FastMCP가 이 포트로 SSE를 띄우도록 강제
-
+      - CONF_DEBUG=1
     networks: [opt_ai-net]
     restart: unless-stopped
     # (필요시 외부 접근용) 포트 열고 싶으면 아래 주석 해제
