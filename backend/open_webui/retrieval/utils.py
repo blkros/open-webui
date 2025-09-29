@@ -603,7 +603,8 @@ def get_sources_from_items(
                 log.debug(f"skipping {item} as it has already been extracted")
                 continue
 
-            # ▼▼▼▼▼ 여기부터 추가: rag_source 수집 ▼▼▼▼▼
+            extracted_collections.extend(list(collection_names))
+
             rag_sources: list[str] = []
 
             # (1) 인라인 메타에 rag_source가 실려온 경우

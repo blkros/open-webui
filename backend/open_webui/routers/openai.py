@@ -960,12 +960,18 @@ async def generate_chat_completion(
 
         if is_fact_mode or is_retrieval_mode:
             guard_lines = [
-                "다음 문서 컨텍스트에 근거해서만 한국어로 답하라.",
-                "질문에 포함된 연도(예: 2025)는 '현재 연도'가 아니라 문서/페이지의 '텍스트 키워드(필터)'로 우선 해석하라.",
-                "컨텍스트에 없는 내용은 추론/상상/보완하지 말고, 다음 문장을 출력하라: 주어진 정보에서 질문에 대한 정보를 찾을 수 없습니다",
-                "가능하면 근거 문장(요약)과 페이지 제목/URL을 함께 제시하라.",
+                # [CHANGE] 영어 지시 + 한국어 출력 고정
+                "Follow these rules STRICTLY:",
+                "1) Use ONLY the provided context.",
+                "2) Answer in Korean.",
+                "3) If the context does not contain the answer, reply exactly: 주어진 정보에서 질문에 대한 정보를 찾을 수 없습니다",
+                "4) If asked for lists like 'DR 2025 이슈사항 최근 5건', extract up to 5 bullet points from the context.",
+                "5) Each bullet MUST end with (출처: <페이지제목> – <URL>).",
+                "Example:\n- …요약… (출처: DR 운영 점검 – https://.../pages/viewpage.action?pageId=12345)"
             ]
             messages.insert(0, {"role": guard_role, "content": "\n".join(guard_lines)})
+            payload["temperature"] = 0
+            payload["top_p"] = 0
             # 사실/조회형은 보수적 샘플링
             try:
                 payload["temperature"] = min(float(payload.get("temperature", 0.7)), 0.2)
@@ -977,9 +983,11 @@ async def generate_chat_completion(
             messages.insert(0, {
                 "role": guard_role,
                 "content": (
-                    "너는 창의적 보조자다. 아이디어를 다양하고 구체적으로 제시하라. "
-                    "문서 컨텍스트가 주어졌다면 참고는 하되, 컨텍스트에 묶이지 말고 새로운 제안을 하라. "
-                    "사실 단정이 아니라 아이디어일 때는 명확히 아이디어임을 표기하라."
+                    # [CHANGE] 영어 지시 + 한국어 출력
+                    "You are a creative assistant. Provide diverse, concrete ideas.\n"
+                    "If context is provided, you may reference it but DO NOT be constrained by it.\n"
+                    "Make it explicit when you are giving ideas (not facts).\n"
+                    "Answer in Korean."
                 )
             })
             payload["temperature"] = max(float(payload.get("temperature", 0.7)), 0.9)
