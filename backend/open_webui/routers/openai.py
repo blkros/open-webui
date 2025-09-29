@@ -971,7 +971,7 @@ async def generate_chat_completion(
             ]
             messages.insert(0, {"role": guard_role, "content": "\n".join(guard_lines)})
             payload["temperature"] = 0
-            payload["top_p"] = 0
+            payload.pop("top_p", None)
             # 사실/조회형은 보수적 샘플링
             try:
                 payload["temperature"] = min(float(payload.get("temperature", 0.7)), 0.2)
@@ -998,6 +998,17 @@ async def generate_chat_completion(
 
     except Exception as e:
         log.exception(f"conditional-guard: {e}")
+
+    try:
+        tp = payload.get("top_p", None)
+        if tp is not None:
+            tp = float(tp)
+            if tp <= 0:
+                payload.pop("top_p", None)  # 0 또는 음수면 제거(서버 기본값 사용)
+            elif tp > 1:
+                payload["top_p"] = 1.0      # 1 초과면 클램프
+    except Exception:
+        payload.pop("top_p", None)
 
     payload = json.dumps(payload)
 
@@ -1179,17 +1190,14 @@ async def proxy(path: str, request: Request, user=Depends(get_verified_user)):
 
         if api_config.get("azure", False):
             api_version = api_config.get("api_version", "2023-03-15-preview")
+            request_url, payload = convert_to_azure_payload(url, payload, api_version)
             headers["api-key"] = key
             headers["api-version"] = api_version
-
-            payload = json.loads(body)
-            url, payload = convert_to_azure_payload(url, payload, api_version)
-            body = json.dumps(payload).encode()
-
-            request_url = f"{url}/{path}?api-version={api_version}"
+            request_url = f"{request_url}/chat/completions?api-version={api_version}"
         else:
+            request_url = f"{url}/chat/completions"
             headers["Authorization"] = f"Bearer {key}"
-            request_url = f"{url}/{path}"
+
 
         session = aiohttp.ClientSession(trust_env=True)
         r = await session.request(
