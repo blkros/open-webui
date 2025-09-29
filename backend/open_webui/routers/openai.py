@@ -934,59 +934,43 @@ async def generate_chat_completion(
     except Exception as e:
         log.exception(f"rag-proxy-auto: error: {e}")
         
-    # === 조건부 프롬프트 가드: 사실 질의 vs 창의 질의 ===
+    # === 조건부 프롬프트 가드: 사실/조회 vs 창의 ===
     try:
         messages = payload.get("messages", []) or []
         last_user = next((m for m in reversed(messages) if m.get("role") == "user"), {})
         user_text = (last_user.get("content") or "")
 
-        # 정의/개요 질의 감지
-        def_pat = r"(정의|개요|소개|요약|무엇|뭐야|뭔지|설명|간단히\s*설명)"
-        is_def_query = bool(re.search(def_pat, user_text))
-        year_in_q   = bool(re.search(r'(?:19|20)\d{2}', user_text))
-        topic_in_q  = bool(re.search(r'(이슈|목록|현황|페이지|탭|리스트|DR|작업)', user_text))
+        # 조회형(연도+목록/이슈성) 감지
+        year_in_q = bool(re.search(r'(?:19|20)\d{2}', user_text))
+        retrieval_keywords = ("이슈", "목록", "현황", "리스트", "페이지", "탭", "작업", "DR")
+        is_retrieval_mode = year_in_q and any(k in user_text for k in retrieval_keywords)
+        timey = any(t in user_text for t in ("현재","지금","올해","이번","오늘","어제","내일","분기","금주","이번주"))
+        if timey:
+            is_retrieval_mode = False
         
-        # 사실/근거 지향 질의 감지
+        # 사실/근거 모드
         fact_pat = r"(제\s*\d{1,3}\s*조|조문|근거|원문|페이지|출처)"
         is_fact_mode = bool(re.search(fact_pat, user_text))
 
-        # 창의 질의 감지(선택)
+        # 창의 모드
         creative_keywords = ("아이디어", "브레인스토밍", "이름짓기", "카피", "슬로건", "비유", "창의", "스타일")
         is_creative_mode = any(k in user_text for k in creative_keywords)
 
-        # o-series는 developer 역할 사용
         guard_role = "developer" if is_openai_reasoning_model(payload.get("model", "")) else "system"
 
-        if is_fact_mode:
-            # 정의/개요 허용: 명시 정의 문장이 없어도 2–3문장 개요 생성 OK(컨텍스트 근거만)
-            if is_def_query:
-                guard_lines = [
-                    "다음 문서 컨텍스트에 근거해서만 한국어로 답하라.",
-                    "질문이 정의/개요/소개/요약을 요구하는 경우, 컨텍스트에 단일한 정의 문장이 없더라도 컨텍스트의 관련 조각만을 근거로 2–3문장 개요를 작성해도 된다.",
-                    "가능하면 각 문장 끝에 [출처: 페이지 제목 또는 URL]을 간단히 표기하라.",
-                    "컨텍스트가 충분하지 않으면: 주어진 정보에서 질문에 대한 정보를 찾을 수 없습니다",
-                ]
-                if year_in_q and topic_in_q:
-                    guard_lines.insert(1, "질문에 포함된 연도(예: 2025)는 '현재 연도'가 아니라 문서/페이지의 '텍스트 키워드(필터)'로 우선 해석하라.")
-                messages.insert(0, {"role": guard_role, "content": "\n".join(guard_lines)})
-            else:
-                guard_lines = [
-                    "다음 문서 컨텍스트에 근거해서만 한국어로 답하라.",
-                    "컨텍스트에 없는 내용은 추론/상상/보완하지 말고, 다음 문장을 출력하라: 주어진 정보에서 질문에 대한 정보를 찾을 수 없습니다",
-                    "가능하면 근거 문장(요약)과 조문/페이지 메타를 함께 제시하라.",
-                ]
+        if is_fact_mode or is_retrieval_mode:
+            guard_lines = [
+                "다음 문서 컨텍스트에 근거해서만 한국어로 답하라.",
+                "질문에 포함된 연도(예: 2025)는 '현재 연도'가 아니라 문서/페이지의 '텍스트 키워드(필터)'로 우선 해석하라.",
+                "컨텍스트에 없는 내용은 추론/상상/보완하지 말고, 다음 문장을 출력하라: 주어진 정보에서 질문에 대한 정보를 찾을 수 없습니다",
+                "가능하면 근거 문장(요약)과 페이지 제목/URL을 함께 제시하라.",
+            ]
             messages.insert(0, {"role": guard_role, "content": "\n".join(guard_lines)})
-
-            # 사실 모드: 보수적 샘플링
-            try:
-                payload["temperature"] = min(float(payload.get("temperature", 0.7)), 0.2)
-            except Exception:
-                payload["temperature"] = 0.2
-
-            log.info("guard-mode: fact(definition-allowed)" if is_def_query else "guard-mode: fact")
+            # 사실/조회형은 보수적 샘플링
+            payload["temperature"] = min(float(payload.get("temperature", 0.7)), 0.2)
+            log.info("guard-mode: retrieval/year-as-keyword")
 
         elif is_creative_mode:
-            # 창의 모드(선택): 자유롭게 제안하되 사실 단정 주의
             messages.insert(0, {
                 "role": guard_role,
                 "content": (
@@ -995,20 +979,14 @@ async def generate_chat_completion(
                     "사실 단정이 아니라 아이디어일 때는 명확히 아이디어임을 표기하라."
                 )
             })
-            try:
-                payload["temperature"] = max(float(payload.get("temperature", 0.7)), 0.9)
-            except Exception:
-                payload["temperature"] = 0.9
-
+            payload["temperature"] = max(float(payload.get("temperature", 0.7)), 0.9)
             log.info("guard-mode: creative")
 
-        # 변경된 messages 적용
         if messages:
             payload["messages"] = messages
 
     except Exception as e:
         log.exception(f"conditional-guard: {e}")
-
 
     payload = json.dumps(payload)
 
