@@ -889,6 +889,7 @@ async def generate_chat_completion(
         last_user = next((m for m in reversed(messages) if m.get("role") == "user"), {})
         prompt_text = (last_user.get("content") or "").strip()
 
+        user_raw_for_guard = prompt_text
         # 1) 먼저 '첨부 기반' 주입을 시도(기존 코드). 실패/공백이면 rag-proxy '전역' 조회로 폴백
         had_chunks = False
         # 기존에 작성해두신 첨부 처리 코드에서 rag_chunks를 만들고 주입했다면,
@@ -938,7 +939,10 @@ async def generate_chat_completion(
     try:
         messages = payload.get("messages", []) or []
         last_user = next((m for m in reversed(messages) if m.get("role") == "user"), {})
-        user_text = (last_user.get("content") or "")
+        user_text = user_raw_for_guard or next(
+            (m.get("content") or "" for m in reversed(messages) if m.get("role") == "user"),
+            ""
+        )
 
         # 조회형(연도+목록/이슈성) 감지
         year_in_q = bool(re.search(r'(?:19|20)\d{2}', user_text))
@@ -949,7 +953,7 @@ async def generate_chat_completion(
             is_retrieval_mode = False
         
         # 사실/근거 모드
-        fact_pat = r"(제\s*\d{1,3}\s*조|조문|근거|원문|페이지|출처)"
+        fact_pat = r"(제\s*\d{1,3}\s*조|조문|근거|원문|출처)"
         is_fact_mode = bool(re.search(fact_pat, user_text))
 
         # 창의 모드
@@ -960,30 +964,29 @@ async def generate_chat_completion(
 
         if is_fact_mode or is_retrieval_mode:
             guard_lines = [
-                # [CHANGE] 영어 지시 + 한국어 출력 고정
                 "Follow these rules STRICTLY:",
                 "1) Use ONLY the provided context.",
                 "2) Answer in Korean.",
                 "3) If the context does not contain the answer, reply exactly: 주어진 정보에서 질문에 대한 정보를 찾을 수 없습니다",
-                "4) If asked for lists like 'DR 2025 이슈사항 최근 5건', extract up to 5 bullet points from the context.",
-                "5) Each bullet MUST end with (출처: <페이지제목> – <URL>).",
-                "Example:\n- …요약… (출처: DR 운영 점검 – https://.../pages/viewpage.action?pageId=12345)"
+                # 요약/설명형일 땐 요약 지시를 추가해 '없다'로 도망가지 않게 만듦
+                "4) If the user asks for a summary/explanation (요약/설명/개요), synthesize a concise answer FROM the context (3~6 bullets or 3~5 sentences).",
+                "5) If asked for lists like 'DR 2025 이슈사항 최근 5건', extract up to 5 bullet points from the context, and end each bullet with (출처: <페이지제목> – <URL>).",
             ]
             messages.insert(0, {"role": guard_role, "content": "\n".join(guard_lines)})
-            payload["temperature"] = 0
-            payload.pop("top_p", None)
-            # 사실/조회형은 보수적 샘플링
+
+            # 보수적 샘플링
             try:
                 payload["temperature"] = min(float(payload.get("temperature", 0.7)), 0.2)
             except Exception:
                 payload["temperature"] = 0.2
-            log.info("guard-mode: retrieval/year-as-keyword")
+            # top_p 정리(0 이하 제거, 1 초과 클램프)는 아래 공통 정리에서 수행
+
+            log.info("guard-mode: fact" if is_fact_mode else "guard-mode: retrieval")
 
         elif is_creative_mode:
             messages.insert(0, {
                 "role": guard_role,
                 "content": (
-                    # [CHANGE] 영어 지시 + 한국어 출력
                     "You are a creative assistant. Provide diverse, concrete ideas.\n"
                     "If context is provided, you may reference it but DO NOT be constrained by it.\n"
                     "Make it explicit when you are giving ideas (not facts).\n"
@@ -1190,10 +1193,15 @@ async def proxy(path: str, request: Request, user=Depends(get_verified_user)):
 
         if api_config.get("azure", False):
             api_version = api_config.get("api_version", "2023-03-15-preview")
+            try:
+                payload = json.loads(body.decode("utf-8") or "{}")
+            except Exception:
+                payload = {}
             request_url, payload = convert_to_azure_payload(url, payload, api_version)
             headers["api-key"] = key
             headers["api-version"] = api_version
             request_url = f"{request_url}/chat/completions?api-version={api_version}"
+            body = json.dumps(payload)
         else:
             request_url = f"{url}/chat/completions"
             headers["Authorization"] = f"Bearer {key}"
