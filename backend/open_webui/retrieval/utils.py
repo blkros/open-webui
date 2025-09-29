@@ -313,7 +313,8 @@ def query_collection(
         r = None
         for p in paths:
             try:
-                r = requests.post(f"{rag}{p}", json=body, headers=headers, timeout=30)
+                rag_timeout = float(os.getenv("RAG_PROXY_TIMEOUT", "45"))
+                r = requests.post(f"{rag}{p}", json=body, headers=headers, timeout=rag_timeout)
                 r.raise_for_status()
                 log.info(f"rag-proxy-only: hit {p}")
                 break

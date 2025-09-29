@@ -934,7 +934,7 @@ async def generate_chat_completion(
     except Exception as e:
         log.exception(f"rag-proxy-auto: error: {e}")
         
-    # === [ADD] 조건부 프롬프트 가드: 사실 질의 vs 창의 질의 ===
+    # === 조건부 프롬프트 가드: 사실 질의 vs 창의 질의 ===
     try:
         messages = payload.get("messages", []) or []
         last_user = next((m for m in reversed(messages) if m.get("role") == "user"), {})
@@ -943,7 +943,9 @@ async def generate_chat_completion(
         # 정의/개요 질의 감지
         def_pat = r"(정의|개요|소개|요약|무엇|뭐야|뭔지|설명|간단히\s*설명)"
         is_def_query = bool(re.search(def_pat, user_text))
-
+        year_in_q   = bool(re.search(r'(?:19|20)\d{2}', user_text))
+        topic_in_q  = bool(re.search(r'(이슈|목록|현황|페이지|탭|리스트|DR|작업)', user_text))
+        
         # 사실/근거 지향 질의 감지
         fact_pat = r"(제\s*\d{1,3}\s*조|조문|근거|원문|페이지|출처)"
         is_fact_mode = bool(re.search(fact_pat, user_text))
@@ -964,6 +966,9 @@ async def generate_chat_completion(
                     "가능하면 각 문장 끝에 [출처: 페이지 제목 또는 URL]을 간단히 표기하라.",
                     "컨텍스트가 충분하지 않으면: 주어진 정보에서 질문에 대한 정보를 찾을 수 없습니다",
                 ]
+                if year_in_q and topic_in_q:
+                    guard_lines.insert(1, "질문에 포함된 연도(예: 2025)는 '현재 연도'가 아니라 문서/페이지의 '텍스트 키워드(필터)'로 우선 해석하라.")
+                messages.insert(0, {"role": guard_role, "content": "\n".join(guard_lines)})
             else:
                 guard_lines = [
                     "다음 문서 컨텍스트에 근거해서만 한국어로 답하라.",

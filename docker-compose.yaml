@@ -44,7 +44,12 @@ services:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     environment:
+      - RAG_PROXY=http://rag-proxy:8080
       - RAG_PROXY_URL=http://rag-proxy:8080
+      - RAG_PROXY_TIMEOUT=45
+      - RAG_MIN_SCORE=0.24
+      - RAG_MAX_CONTEXT_CHARS=8000
+      - RAG_TOP_K=5
       - OLLAMA_BASE_URL=http://ollama:11434
       - BYPASS_EMBEDDING_AND_RETRIEVAL=false
       - WEBUI_SECRET_KEY=
