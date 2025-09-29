@@ -15,6 +15,7 @@ services:
       UPLOAD_DIR: uploads
       HF_HOME: /cache/hf
       TRANSFORMERS_CACHE: /cache/hf/transformers
+      BRIDGE_MCP: "http://mcp-confluence:9012"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
       OPENAI_BASE_URL: "http://172.16.10.168:9993/v1"
       OPENAI_API_KEY: "local-anything"
@@ -75,6 +76,9 @@ services:
       - TRANSPORT=sse
       - HOST=0.0.0.0
       - PORT=9000
+      - OCR_ENABLED=true
+      - OCR_LANG=kor+eng
+      - OCR_MAX_PAGES=10
       # bridge_mcp가 내부에서 쓸 값
       - RAG_PROXY=http://rag-proxy:8080
       - MCP_BASE=http://127.0.0.1:9001
