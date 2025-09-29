@@ -967,7 +967,10 @@ async def generate_chat_completion(
             ]
             messages.insert(0, {"role": guard_role, "content": "\n".join(guard_lines)})
             # 사실/조회형은 보수적 샘플링
-            payload["temperature"] = min(float(payload.get("temperature", 0.7)), 0.2)
+            try:
+                payload["temperature"] = min(float(payload.get("temperature", 0.7)), 0.2)
+            except Exception:
+                payload["temperature"] = 0.2
             log.info("guard-mode: retrieval/year-as-keyword")
 
         elif is_creative_mode:
