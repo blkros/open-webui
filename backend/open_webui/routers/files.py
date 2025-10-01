@@ -50,8 +50,8 @@ log.setLevel(SRC_LOG_LEVELS["MODELS"])
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-RAG_PROXY_URL = os.getenv("RAG_PROXY_URL", "http://localhost:8080")   # 중앙 rag-proxy 주소
-RAG_PROXY_API_KEY = os.getenv("RAG_PROXY_API_KEY", "")               # (선택) rag-proxy에서 X-API-Key 검사할 때
+RAG_PROXY_URL = os.getenv("RAG_PROXY_URL", "http://rag-proxy:8080")
+RAG_PROXY_API_KEY = os.getenv("RAG_PROXY_API_KEY", "")             # (선택) rag-proxy에서 X-API-Key 검사할 때
 
 ############################
 # Check if the current user has access to a file through any knowledge bases the user may be in.
@@ -262,13 +262,13 @@ def upload_file_handler(
             ),
         )
 
-        try:
-            local_path = Storage.get_file(file_path) if hasattr(Storage, "get_file") else file_path
-            _ingest_to_rag_proxy(local_path, name)   # name=원본 파일명으로 업로드(질문에서 'test.pdf' 매칭 쉬움)
-            # 만약 고유성(충돌 회피)을 더 중시하면 filename(uuid_접두사)로 바꾸세요:
-            # _ingest_to_rag_proxy(local_path, filename)
-        except Exception as e:
-            logger.warning("RAG ingest deferred: %s", e)
+        # try:
+        #     local_path = Storage.get_file(file_path) if hasattr(Storage, "get_file") else file_path
+        #     _ingest_to_rag_proxy(local_path, name)   # name=원본 파일명으로 업로드(질문에서 'test.pdf' 매칭 쉬움)
+        #     # 만약 고유성(충돌 회피)을 더 중시하면 filename(uuid_접두사)로 바꾸세요:
+        #     # _ingest_to_rag_proxy(local_path, filename)
+        # except Exception as e:
+        #     logger.warning("RAG ingest deferred: %s", e)
             
         if process:
             if background_tasks and process_in_background:
@@ -558,10 +558,8 @@ async def update_file_data_content_by_id(
 ############################
 
 
-@router.get("/{id}/content")
-async def get_file_content_by_id(
-    id: str, user=Depends(get_verified_user), attachment: bool = Query(False)
-):
+@router.get("/{id}/content/{file_name}")
+async def get_file_content_by_id(id: str, file_name: str, user=Depends(get_verified_user)):
     file = Files.get_file_by_id(id)
 
     if not file:
