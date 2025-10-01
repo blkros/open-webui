@@ -10,7 +10,7 @@ services:
     environment:
       MCP_URL: "http://mcp-confluence:9000/sse?version=2025-06-18"
       MCP_PROTOCOL_VERSION: "2025-06-18"
-      DISABLE_INTERNAL_MCP: "0"
+      DISABLE_INTERNAL_MCP: "1"
       INDEX_DIR: faiss_index
       UPLOAD_DIR: uploads
       HF_HOME: /cache/hf
