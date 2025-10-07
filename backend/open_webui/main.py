@@ -116,6 +116,7 @@ from open_webui.config import (
     OPENAI_API_BASE_URLS,
     OPENAI_API_KEYS,
     OPENAI_API_CONFIGS,
+    
     # Direct Connections
     ENABLE_DIRECT_CONNECTIONS,
     # Model list
@@ -399,6 +400,10 @@ from open_webui.config import (
     AUTOCOMPLETE_GENERATION_INPUT_MAX_LENGTH,
     AppConfig,
     reset_config,
+    ENABLE_RAG_PROXY,
+    RAG_PROXY_URL,
+    RAG_PROXY_TIMEOUT,
+    RAG_PROXY_API_KEY,
 )
 from open_webui.env import (
     LICENSE_KEY,
@@ -582,6 +587,7 @@ async def lifespan(app: FastAPI):
         app.state.redis_task_command_listener.cancel()
 
 
+
 app = FastAPI(
     title="Open WebUI",
     docs_url="/docs" if ENV == "dev" else None,
@@ -604,6 +610,12 @@ app.state.redis = None
 app.state.WEBUI_NAME = WEBUI_NAME
 app.state.LICENSE_METADATA = None
 
+if app.state.config.ENABLE_RAG_PROXY and app.state.config.RAG_PROXY_URL:
+    app.include_router(
+        rag_proxy_router.router,
+        prefix="/api/rag-proxy",
+        tags=["RAG Proxy"],
+    )
 
 ########################################
 #
@@ -791,6 +803,12 @@ app.state.config.RAG_FULL_CONTEXT = RAG_FULL_CONTEXT
 app.state.config.BYPASS_EMBEDDING_AND_RETRIEVAL = BYPASS_EMBEDDING_AND_RETRIEVAL
 app.state.config.ENABLE_RAG_HYBRID_SEARCH = ENABLE_RAG_HYBRID_SEARCH
 app.state.config.ENABLE_WEB_LOADER_SSL_VERIFICATION = ENABLE_WEB_LOADER_SSL_VERIFICATION
+
+app.state.config.ENABLE_RAG_PROXY = ENABLE_RAG_PROXY
+app.state.config.RAG_PROXY_URL = RAG_PROXY_URL
+app.state.config.RAG_PROXY_TIMEOUT = RAG_PROXY_TIMEOUT
+app.state.config.RAG_PROXY_API_KEY = RAG_PROXY_API_KEY
+
 
 app.state.config.CONTENT_EXTRACTION_ENGINE = CONTENT_EXTRACTION_ENGINE
 app.state.config.DATALAB_MARKER_API_KEY = DATALAB_MARKER_API_KEY

@@ -2253,6 +2253,31 @@ DOCLING_PICTURE_DESCRIPTION_MODE = PersistentConfig(
     os.getenv("DOCLING_PICTURE_DESCRIPTION_MODE", ""),
 )
 
+# --- RAG Proxy (rag-proxy sidecar) ---
+ENABLE_RAG_PROXY = PersistentConfig(
+    "ENABLE_RAG_PROXY",
+    "rag_proxy.enable",
+    os.environ.get("ENABLE_RAG_PROXY", "True").lower() == "true",
+)
+
+RAG_PROXY_URL = PersistentConfig(
+    "RAG_PROXY_URL",
+    "rag_proxy.url",
+    os.environ.get("RAG_PROXY_URL", ""),  # 예: http://rag-proxy:8080
+)
+
+RAG_PROXY_TIMEOUT = PersistentConfig(
+    "RAG_PROXY_TIMEOUT",
+    "rag_proxy.timeout",
+    int(os.environ.get("RAG_PROXY_TIMEOUT", "30")),
+)
+
+RAG_PROXY_API_KEY = PersistentConfig(
+    "RAG_PROXY_API_KEY",
+    "rag_proxy.api_key",
+    os.environ.get("RAG_PROXY_API_KEY", ""),
+)
+
 
 docling_picture_description_local = os.getenv("DOCLING_PICTURE_DESCRIPTION_LOCAL", "")
 try:
