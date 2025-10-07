@@ -46,10 +46,11 @@ services:
     image: ghcr.io/open-webui/open-webui:0.6.30
     container_name: open-webui
     environment:
-      - ENABLE_RAG_PROXY=false
-      - RAG_PROXY_URL=
+      - ENABLE_RAG_PROXY=true
+      - RAG_PROXY_URL=http://rag-proxy:8080
+      # 내장 RAG를 끄고, 반드시 우리 프록시만 타게 하려면 ↓
+      - BYPASS_EMBEDDING_AND_RETRIEVAL=true
       - OLLAMA_BASE_URL=http://ollama:11434
-      - BYPASS_EMBEDDING_AND_RETRIEVAL=false
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
       - WEBUI_SECRET_KEY=
     depends_on:
@@ -57,10 +58,13 @@ services:
       - ollama
     volumes:
       - open-webui:/app/backend/data
+      # ★ 우리가 고친 백엔드 코드 주입 (필수)
+      - /opt/open-webui/backend/open_webui:/app/backend/open_webui
     ports:
       - "3000:8080"
     networks: [opt_ai-net]
     restart: unless-stopped
+
   
   mcp-confluence:
     build:
