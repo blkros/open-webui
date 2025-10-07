@@ -23,6 +23,8 @@ services:
       ENABLE_RERANKER: "true"
       RERANKER_MODEL: BAAI/bge-reranker-base
       RERANKER_TOP_N: "5"
+      ENABLE_SPARSE: "1"
+      SPARSE_LIMIT: "200"
     env_file:
       - /opt/rag-proxy/.env
     volumes:
@@ -73,8 +75,8 @@ services:
       # bridge_mcp가 내부에서 쓸 값
       - RAG_PROXY=http://rag-proxy:8080
       - MCP_BASE=http://127.0.0.1:9001
-      - TOP_K=5
-      - THRESH=0.65
+      - TOP_K=10
+      - THRESH=0.35
       - CONF_DEFAULT_SPACE=SMST
       - FASTMCP_PORT=9000    # FastMCP가 이 포트로 SSE를 띄우도록 강제
 
