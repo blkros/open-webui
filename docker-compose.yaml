@@ -18,7 +18,7 @@ services:
       HF_HUB_ENABLE_HF_TRANSFER: "1"
       OPENAI_BASE_URL: "http://172.16.10.168:9993/v1"
       OPENAI_API_KEY: "local-anything"
-      EMBEDDING_MODEL: intfloat/multilingual-e5-large-instruct
+      EMBEDDING_MODEL: BAAI/bge-m3
       EMBEDDING_DEVICE: cpu
       ENABLE_RERANKER: "true"
       RERANKER_MODEL: BAAI/bge-reranker-base
