@@ -41,20 +41,20 @@ services:
     networks: [opt_ai-net]
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:0.6.30
     container_name: open-webui
     environment:
-      - RAG_PROXY_URL=http://rag-proxy:8080
+      - ENABLE_RAG_PROXY=false
+      - RAG_PROXY_URL=
       - OLLAMA_BASE_URL=http://ollama:11434
       - BYPASS_EMBEDDING_AND_RETRIEVAL=false
-      - WEBUI_SECRET_KEY=
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
+      - WEBUI_SECRET_KEY=
     depends_on:
       - rag-proxy
       - ollama
     volumes:
       - open-webui:/app/backend/data
-      - /opt/open-webui/backend/open_webui:/app/backend/open_webui
     ports:
       - "3000:8080"
     networks: [opt_ai-net]
