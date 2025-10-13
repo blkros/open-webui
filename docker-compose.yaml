@@ -47,12 +47,14 @@ services:
     networks: [opt_ai-net]
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:0.6.30
+    # 공식 이미지 대신, 내 소스로 빌드해서 씀
+    build:
+      context: /opt/open-webui
+      dockerfile: Dockerfile
     container_name: open-webui
     environment:
       - ENABLE_RAG_PROXY=true
       - RAG_PROXY_URL=http://rag-proxy:8080
-      # 내부 임베딩/리트리벌을 건너뛰고 외부 RAG 프록시만 쓰려면 true
       - BYPASS_EMBEDDING_AND_RETRIEVAL=true
       - OLLAMA_BASE_URL=http://ollama:11434
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
@@ -64,11 +66,10 @@ services:
     networks: [opt_ai-net]
     restart: unless-stopped
     volumes:
-      # 데이터베이스/설정은 named volume
+      # 데이터베이스/설정만 볼륨. (코드 바인드 절대 X)
       - type: volume
         source: open-webui
         target: /app/backend/data
-      - /opt/open-webui/backend/open_webui:/app/backend/open_webui
 
   mcp-confluence:
     build:
@@ -80,20 +81,14 @@ services:
       - TRANSPORT=sse
       - HOST=0.0.0.0
       - PORT=9000
-      # bridge_mcp가 내부에서 쓸 값
       - RAG_PROXY=http://rag-proxy:8080
       - MCP_BASE=http://127.0.0.1:9001
       - TOP_K=4
       - THRESH=0.65
       - CONF_DEFAULT_SPACE=SMST
-      - FASTMCP_PORT=9000    # FastMCP가 이 포트로 SSE를 띄우도록 강제
+      - FASTMCP_PORT=9000
     networks: [opt_ai-net]
     restart: unless-stopped
-    # (필요시 외부 접근용) 포트 열고 싶으면 아래 주석 해제
-    # ports:
-    #   - "9000:9000"
-    #   - "9001:9001"
-    #   - "9012:9012"
     command: >
       sh -lc "
       uvicorn app.http_wrapper:api --host 0.0.0.0 --port 9001 &
