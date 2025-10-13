@@ -70,7 +70,8 @@ services:
       - type: volume
         source: open-webui
         target: /app/backend/data
-
+      - ./open-webui/backend:/app/backend
+      
   mcp-confluence:
     build:
       context: /opt/mcp-confluence
