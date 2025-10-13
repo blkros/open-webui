@@ -22,9 +22,13 @@ services:
       EMBEDDING_DEVICE: cpu
       ENABLE_RERANKER: "true"
       RERANKER_MODEL: BAAI/bge-reranker-base
-      RERANKER_TOP_N: "5"
       ENABLE_SPARSE: "1"
       SPARSE_LIMIT: "200"
+      CHUNK_SIZE: "800"
+      CHUNK_OVERLAP: "120"
+      RETRIEVER_K: "4"
+      RERANKER_TOP_N: "4"
+      RETRIEVER_FETCH_K: "40"
     env_file:
       - /opt/rag-proxy/.env
     volumes:
@@ -86,11 +90,10 @@ services:
       # bridge_mcp가 내부에서 쓸 값
       - RAG_PROXY=http://rag-proxy:8080
       - MCP_BASE=http://127.0.0.1:9001
-      - TOP_K=10
-      - THRESH=0.35
+      - TOP_K=4
+      - THRESH=0.65
       - CONF_DEFAULT_SPACE=SMST
       - FASTMCP_PORT=9000    # FastMCP가 이 포트로 SSE를 띄우도록 강제
-
     networks: [opt_ai-net]
     restart: unless-stopped
     # (필요시 외부 접근용) 포트 열고 싶으면 아래 주석 해제

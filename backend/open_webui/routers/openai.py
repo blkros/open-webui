@@ -122,6 +122,17 @@ def openai_reasoning_model_handler(payload):
 
     return payload
 
+def _parse_acronym_map(raw: str) -> dict:
+    table = {}
+    for pair in (raw or "").split(";"):
+        if ":" in pair:
+            k, v = pair.split(":", 1)
+            k = k.strip().upper()
+            v = v.strip()
+            if k and v:
+                table[k] = v
+    return table
+
 
 ##########################################
 #
@@ -880,46 +891,77 @@ async def generate_chat_completion(
     # --- Auto-RAG: 첨부가 없을 때도 rag-proxy 조회해서 점수 높으면만 컨텍스트 주입 ---
     try:
         cfg = request.app.state.config
-        top_k = int(getattr(cfg, "RAG_TOP_K", 5))
+        top_k = int(getattr(cfg, "RAG_TOP_K", 4))
         k_reranker = int(getattr(cfg, "RAG_RERANKER_TOP_N", top_k))
-        min_score = float(os.getenv("RAG_MIN_SCORE", "0.24"))          # 점수 임계값 (환경변수로 조정 가능)
-        max_chars = int(os.getenv("RAG_MAX_CONTEXT_CHARS", "8000"))    # 컨텍스트 글자수 상한
+
+        # 보수적 주입 파라미터
+        min_score = float(os.getenv("RAG_MIN_SCORE", "0.38"))          # 0.35~0.45 권장
+        max_chars = int(os.getenv("RAG_MAX_CONTEXT_CHARS", "5000"))    # 전체 주입 상한
+        per_chunk_max = int(os.getenv("RAG_PER_CHUNK_MAX", "900"))     # 조각 별 상한
 
         messages = payload.get("messages", []) or []
         last_user = next((m for m in reversed(messages) if m.get("role") == "user"), {})
         prompt_text = (last_user.get("content") or "").strip()
 
-        # 1) 먼저 '첨부 기반' 주입을 시도(기존 코드). 실패/공백이면 rag-proxy '전역' 조회로 폴백
-        had_chunks = False
-        # 기존에 작성해두신 첨부 처리 코드에서 rag_chunks를 만들고 주입했다면,
-        # 그 결과를 감지할 수 있도록 간단히 체크만 추가하세요.
-        # ex) had_chunks = bool(rag_chunks)
+        # 1) 첨부 기반 주입 감지(이미 다른 경로에서 넣었으면 스킵)
+        had_chunks = False  # 필요하면 실제 첨부 처리 코드에서 True로 세팅
 
         if prompt_text and not had_chunks:
-            # 2) 첨부가 없으면 전역 인덱스에서 검색
+            # 2) 전역 인덱스 검색 (OWUI util) 시도
             res = query_collection(
-                collection_names=[],             # 전역 인덱스 (현재 구현은 어차피 무시하고 /query 전역 검색)
+                collection_names=[],
                 queries=[prompt_text],
                 embedding_function=None,
                 k=top_k,
-                # ↓ utils.py를 함께 수정해두면 user 헤더가 rag-proxy로 전달되어 사용자 범위 필터에 활용 가능
-                user=user,                       # (utils.py에서 user를 optional 인자로 받도록 반영)
+                user=user,   # utils가 user param 지원해야 함(미지원이면 제거)
             )
+            def _rag_query_direct(prompt_text: str, k: int, user):
+                try:
+                    base = os.getenv("RAG_PROXY_URL", "http://rag-proxy:8080").rstrip("/")
+                    # space 힌트가 있으면 같이 전달(없으면 서버가 soft/hard 필터링)
+                    space = os.getenv("CONF_DEFAULT_SPACE", "")
+                    payload = {"q": prompt_text, "k": k, **({"space": space} if space else {})}
+                    r = requests.post(f"{base}/query", json=payload, timeout=15)
+                    r.raise_for_status()
+                    return r.json()
+                except Exception:
+                    return {}
 
-            distances = (res.get("distances") or [[]])[0]
-            documents = (res.get("documents") or [[]])[0]
-            pairs = [(float(s) if s is not None else 0.0, t) for s, t in zip(distances, documents) if t]
+            # 2-a) BYPASS 등으로 결과가 비면 rag-proxy 직접 폴백
+            try:
+                got_docs = (res and (res.get("documents") or [[]])[0])
+            except Exception:
+                got_docs = None
+            if not got_docs:
+                res = _rag_query_direct(prompt_text, top_k, user)
 
-            # 3) 임계값 이상인 결과만 골라, 길이 제한으로 묶어 주입
+            # 3) 결과 파싱
+            distances = (res.get("distances") or [[]])[0] if res else []
+            documents = (res.get("documents") or [[]])[0] if res else []
+
+            pairs = [
+                (float(s) if s is not None else 0.0, t)
+                for s, t in zip(distances, documents)
+                if t
+            ]
+
+            # 4) 임계값 이상만 남기고, per-chunk/전체 길이 제한 적용
             keep_texts = [t for s, t in pairs if s >= min_score]
+
             if keep_texts:
                 acc, acc_len = [], 0
                 for t in keep_texts:
+                    t = (t or "").strip()
+                    if not t:
+                        continue
+                    if len(t) > per_chunk_max:
+                        t = t[:per_chunk_max] + "…"
                     if acc_len + len(t) > max_chars:
                         break
-                    acc.append(t.strip())
+                    acc.append(t)
                     acc_len += len(t)
 
+                # 5) 유저 메세지 뒤에 컨텍스트 주입
                 if acc:
                     context = "\n\n---\n[컨텍스트]\n" + "\n\n".join(acc)
                     for m in reversed(messages):
@@ -928,11 +970,12 @@ async def generate_chat_completion(
                             break
                     payload["messages"] = messages
                     top_score = pairs[0][0] if pairs else 0.0
-                    log.info(f"rag-proxy-auto: inject {len(acc)} chunks (top_score={top_score})")
+                    log.info(f"rag-proxy-auto: inject {len(acc)} chunks (top_score={top_score:.3f})")
             else:
                 log.info("rag-proxy-auto: no confident hits; skip injection")
     except Exception as e:
         log.exception(f"rag-proxy-auto: error: {e}")
+
         
     # === [ADD] 조건부 프롬프트 가드: 사실 질의 vs 창의 질의 ===
     try:
@@ -956,12 +999,30 @@ async def generate_chat_completion(
         # o-series/추론형 모델은 system 대신 developer 역할
         guard_role = "developer" if is_openai_reasoning_model(payload.get("model", "")) else "system"
 
+        # --- 약어 의미 고정 (범용) ---
+        try:
+            acr_map = _parse_acronym_map(os.getenv("ACRONYM_MAP", ""))
+            if acr_map:
+                # 사용자 질문에서 대문자 2~5자 약어 추출
+                acronyms = set(re.findall(r"\b[A-Z]{2,5}\b", user_text))
+                rules = []
+                for ac in sorted(acronyms):
+                    if ac in acr_map:
+                        rules.append(f"도메인 규칙: '{ac}'은 '{acr_map[ac]}' 의미로 해석하라.")
+                if rules:
+                    messages.insert(0, {"role": guard_role, "content": "\n".join(rules)})
+                    payload["messages"] = messages
+                    log.info(f"acronym-guard: {', '.join(acronyms & set(acr_map.keys()))}")
+        except Exception as e:
+            log.exception(f"acronym-guard: {e}")
+
         if is_fact_mode:
             guard_lines = [
                 "다음 문서 컨텍스트에 근거해서만 한국어로 답하라.",
                 "컨텍스트에 없는 내용은 추론/상상/보완하지 말고, 다음 문장을 출력하라: 주어진 정보에서 질문에 대한 정보를 찾을 수 없습니다",
-                "가능하면 근거 문장(요약)과 조문/페이지 메타를 함께 제시하라.",
+                "가능하면 답변 말미에 근거 문장 요약과 문서 제목/페이지(또는 조문/링크)를 함께 제시하라.",  # ← 보강
             ]
+
             messages.insert(0, {"role": guard_role, "content": "\n".join(guard_lines)})
             # 사실 모드: 보수적 샘플링
             try:
