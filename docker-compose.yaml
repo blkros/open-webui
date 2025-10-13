@@ -68,12 +68,8 @@ services:
       - type: volume
         source: open-webui
         target: /app/backend/data
-      # 우리가 고친 백엔드 코드 주입 (bind)
-      - type: bind
-        source: /opt/open-webui/backend/open_webui
-        target: /app/backend/open_webui
+      - /opt/open-webui/backend/open_webui:/app/backend/open_webui
 
-  
   mcp-confluence:
     build:
       context: /opt/mcp-confluence
