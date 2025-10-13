@@ -48,7 +48,7 @@ services:
     environment:
       - ENABLE_RAG_PROXY=true
       - RAG_PROXY_URL=http://rag-proxy:8080
-      # 내장 RAG를 끄고, 반드시 우리 프록시만 타게 하려면 ↓
+      # 내부 임베딩/리트리벌을 건너뛰고 외부 RAG 프록시만 쓰려면 true
       - BYPASS_EMBEDDING_AND_RETRIEVAL=true
       - OLLAMA_BASE_URL=http://ollama:11434
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
@@ -56,14 +56,21 @@ services:
     depends_on:
       - rag-proxy
       - ollama
-    volumes:
-      - open-webui:/app/backend/data
-      # ★ 우리가 고친 백엔드 코드 주입 (필수)
-      - /opt/open-webui/backend/open_webui:/app/backend/open_webui
-    ports:
-      - "3000:8080"
+    ports: ["3000:8080"]
     networks: [opt_ai-net]
     restart: unless-stopped
+    volumes:
+      # 데이터베이스/설정은 named volume
+      - type: volume
+        source: open-webui
+        target: /app/backend/data
+      # 우리가 고친 백엔드 코드 주입 (bind)
+      - type: bind
+        source: /opt/open-webui/backend/open_webui
+        target: /app/backend/open_webui
+        bind:
+          create_host_path: true
+
 
   
   mcp-confluence:
