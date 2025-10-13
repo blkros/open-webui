@@ -2257,7 +2257,7 @@ DOCLING_PICTURE_DESCRIPTION_MODE = PersistentConfig(
 ENABLE_RAG_PROXY = PersistentConfig(
     "ENABLE_RAG_PROXY",
     "rag_proxy.enable",
-    os.environ.get("ENABLE_RAG_PROXY", "True").lower() == "true",
+    os.environ.get("ENABLE_RAG_PROXY", "false").lower() == "true",
 )
 
 RAG_PROXY_URL = PersistentConfig(
