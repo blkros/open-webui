@@ -3415,3 +3415,16 @@ LDAP_ATTRIBUTE_FOR_GROUPS = PersistentConfig(
     "ldap.server.attribute_for_groups",
     os.environ.get("LDAP_ATTRIBUTE_FOR_GROUPS", "memberOf"),
 )
+
+# --- add at bottom of config.py ---
+def autowire_persistent_configs(app_config: AppConfig):
+    """
+    Scan this module for PersistentConfig instances and bind them onto the given AppConfig.
+    After this, app.state.config.<KEY> becomes available.
+    """
+    for name, obj in globals().items():
+        if isinstance(obj, PersistentConfig):
+            try:
+                setattr(app_config, name, obj)
+            except Exception as e:
+                log.exception(f"autowire failed for {name}: {e}")
