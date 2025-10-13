@@ -26,8 +26,8 @@ services:
       SPARSE_LIMIT: "200"
       CHUNK_SIZE: "800"
       CHUNK_OVERLAP: "120"
-      RETRIEVER_K: "4"
-      RERANKER_TOP_N: "4"
+      RETRIEVER_K: "3"
+      RERANKER_TOP_N: "3"
       RETRIEVER_FETCH_K: "40"
     env_file:
       - /opt/rag-proxy/.env
