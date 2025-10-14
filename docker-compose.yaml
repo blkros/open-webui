@@ -64,15 +64,12 @@ services:
 
 
   open-webui:
-    build:
-      context: /opt/open-webui
-      dockerfile: Dockerfile
+    image: ghcr.io/open-webui/open-webui:latest
     container_name: open-webui
     environment:
       - ENABLE_RAG_PROXY=true
       - RAG_PROXY_URL=http://rag-proxy:8080
       - BYPASS_EMBEDDING_AND_RETRIEVAL=true
-      - OLLAMA_BASE_URL=http://ollama:11434
       - ENABLE_FORWARD_USER_INFO_HEADERS=true
       - WEBUI_SECRET_KEY=
     depends_on:
