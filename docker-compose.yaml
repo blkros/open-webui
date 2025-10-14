@@ -2,7 +2,8 @@ services:
   rag-proxy:
     container_name: rag-proxy
     build:
-      context: /opt/rag-proxy
+      context: /opt/ai-stack
+      dockerfile: Dockerfile
       network: host
     ports: ["8080:8080"]
     networks: [opt_ai-net]
@@ -10,7 +11,7 @@ services:
     environment:
       MCP_URL: "http://mcp-confluence:9000/sse?version=2025-06-18"
       MCP_PROTOCOL_VERSION: "2025-06-18"
-      DISABLE_INTERNAL_MCP: "1"
+      DISABLE_INTERNAL_MCP: "0"   # ← 내부 MCP 폴백 사용(툴 방식 유지 시 권장)
       INDEX_DIR: faiss_index
       UPLOAD_DIR: uploads
       HF_HOME: /cache/hf
@@ -29,25 +30,40 @@ services:
       RETRIEVER_K: "3"
       RERANKER_TOP_N: "3"
       RETRIEVER_FETCH_K: "40"
-    env_file:
-      - /opt/rag-proxy/.env
+    # env_file: /opt/ai-stack/.env   # ← 쓰려면 이 경로에 .env 실제 존재해야 함
     volumes:
       - hf-cache:/cache/hf
-      - /opt/rag-proxy/storage/uploads:/app/uploads
-      - /opt/rag-proxy/storage/index:/app/faiss_index
+      - /opt/ai-stack/storage/uploads:/app/uploads
+      - /opt/ai-stack/storage/index:/app/faiss_index
+
+  rag-router:
+    container_name: rag-router
+    build:
+      context: /opt/ai-stack/rag-router
+      dockerfile: Dockerfile
+    image: rag-router:latest
+    ports: ["8088:8000"]
+    environment:
+      OPENAI_BASE_URL: "http://172.16.10.168:9993/v1"
+      OPENAI_API_KEY: "local-anything"
+      ROUTER_MODEL_ID: "qwen3-30b-a3b-fp8-router"
+      MAX_CTX_CHARS: "8000"
+      RETRIEVE_K: "5"
+      RAG_PROXY_URL: "http://rag-proxy:8080"
+    depends_on: [rag-proxy]
+    networks: [opt_ai-net]
 
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
-    pull_policy: never
-    tty: true
+    profiles: ["ollama"]
     restart: unless-stopped
     volumes:
       - ollama:/root/.ollama
     networks: [opt_ai-net]
 
+
   open-webui:
-    # 공식 이미지 대신, 내 소스로 빌드해서 씀
     build:
       context: /opt/open-webui
       dockerfile: Dockerfile
@@ -61,17 +77,15 @@ services:
       - WEBUI_SECRET_KEY=
     depends_on:
       - rag-proxy
-      - ollama
     ports: ["3000:8080"]
     networks: [opt_ai-net]
     restart: unless-stopped
     volumes:
-      # 데이터베이스/설정만 볼륨. (코드 바인드 절대 X)
       - type: volume
         source: open-webui
         target: /app/backend/data
-      - ./open-webui/backend:/app/backend
-      
+      # - ./open-webui/backend:/app/backend   # ← 개발용이 아니면 주석 유지 권장
+
   mcp-confluence:
     build:
       context: /opt/mcp-confluence
